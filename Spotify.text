@@ -1,0 +1,5 @@
+<stringtable>
+  <ID name="Self_ToolTip">Assigns a physical button to generate an alert</ID>
+  <ID name="Title_ToolTip">Use to define the physical key to use. Can be a keyboard, mouse, gamepad or MIDI control</ID>
+  <ID name="onAction_ToolTip">Fires once when the key is pressed down</ID>
+</stringtable>
