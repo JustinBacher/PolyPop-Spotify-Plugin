@@ -2,7 +2,6 @@ import asyncio
 import socket
 import webbrowser
 
-from collections import namedtuple
 from dataclasses import asdict, dataclass
 from glob import glob
 from itertools import count
@@ -174,7 +173,7 @@ async def create_spotify(
     me = spotify.me()
     current_playback = spotify.current_playback() or {}
     profile_image = me.get("images")
-    current_context = SpotifyContext(
+    current_context = app["spotify_context"] = SpotifyContext(
         spotify=spotify,
         devices=get_devices(spotify),
         device=current_playback.get("device", ""),
@@ -184,12 +183,12 @@ async def create_spotify(
         is_playing=current_playback.get("is_playing"),
         playlists=get_all_playlists(spotify),
     )
-    app["spotify_context"] = current_context
+
     await broadcast(
         app,
         "spotify_connect",
         name=me.get("display_name"),
-        user_image_url="" if not profile_image else profile_image[0].get("url"),
+        user_image_url="" if profile_image == {} else profile_image[0].get("url"),
         devices=current_context.devices,
         current_device=current_context.device,
         is_playing=current_context.is_playing,
@@ -198,8 +197,12 @@ async def create_spotify(
         repeat_state=current_repeat,
     )
 
-    asyncio.create_task(exec_every_x_seconds(1, check_now_playing(spotify)))
-    asyncio.create_task(exec_every_x_seconds(5, check_sp_settings(spotify)))
+    asyncio.create_task(
+        exec_every_x_seconds(1, check_now_playing(app, spotify, current_context))
+    )
+    asyncio.create_task(
+        exec_every_x_seconds(5, check_sp_settings(app, spotify, current_context))
+    )
 
 
 async def refresh_spotify(
@@ -257,17 +260,31 @@ def get_devices(spotify: Spotify) -> dict:
     return devices
 
 
-async def play(app: web.Application, data: dict, retries: int = 0) -> None:
-    spotify = app["spotify"]
+async def play(
+    app: web.Application,
+    spotify: Spotify,
+    current_context: SpotifyContext,
+    data: dict,
+    retries: int = 0,
+) -> None:
+    """Starts Playing a song or Playlist. If failure then it retries
+    by downgrading to a more do-able play event
+
+    Args:
+        app (web.Application)
+        spotify (Spotify)
+        current_context (SpotifyContext)
+        data (dict)
+        retries (int, optional): Number of times to try downgrading Play event. Defaults to 0.
+    """
     device_id = (
-        devices.get(data.get("device_name")) or app["spotify_context"].current_device
+        devices.get(data.get("device_name", None), False) or current_context.device
     )
     playlist_uri = data.get("playlist_uri")
     song_uri = data.get("track_uri")
-
     logger.debug(device_id)
 
-    if current_playing_state and not playlist_uri:
+    if current_context.is_playing and playlist_uri is not None:
         return
 
     try:
@@ -280,10 +297,10 @@ async def play(app: web.Application, data: dict, retries: int = 0) -> None:
     except SpotifyException as e:
         if retries == 0:
             data["device_name"] = socket.gethostname()
-            return await play(app, data, 1)
+            return await play(app, spotify, current_context, data, 1)
         elif retries == 1:
             data["device_name"] = environ["COMPUTERNAME"]
-            return await play(app, data, 2)
+            return await play(app, spotify, current_context, data, 2)
         else:
             await broadcast(app, "error", command="play", msg=e.msg, reason=e.reason)
     except Exception as e:
@@ -320,41 +337,31 @@ def volume(spotify: Spotify, data: dict) -> None:
     spotify.volume(data["volume"])
 
 
-async def refresh_devices(app: web.application) -> None:
-    await broadcast(app, "devices", devices=list(get_devices(app["spotify"])))
+async def refresh_devices(app: web.Application, spotify: Spotify) -> None:
+    await broadcast(app, "devices", devices=list(get_devices(spotify)))
 
 
-async def refresh_playlists(app: web.Application) -> None:
-    await broadcast(app, "playlists", playlists=get_all_playlists(app["spotify"]))
+async def refresh_playlists(app: web.Application, spotify: Spotify) -> None:
+    await broadcast(app, "playlists", playlists=get_all_playlists(spotify))
 
 
-async def check_sp_settings(spotify):
-    global sp, current_shuffle, current_repeat, current_volume
+async def check_sp_settings(
+    app: web.Application, spotify: Spotify, current_context: SpotifyContext
+) -> None:
     info = spotify.current_playback().get
-    ret = {}
     new_shuffle = info("shuffle_state")
     new_repeat = info("repeat_state")
+    ret = {}
 
-    if current_shuffle != new_shuffle:
+    if current_context.shuffle_state != new_shuffle:
         ret["shuffle_state"] = new_shuffle
-        current_shuffle = new_shuffle
-    if current_repeat != new_repeat:
+        current_context.shuffle_state = new_shuffle
+    if current_context.repeat_state != new_repeat:
         ret["repeat_state"] = new_repeat
-        current_repeat = new_repeat
+        current_context.repeat_state = new_repeat
 
     if ret:
-        await broadcast("update", **ret)
-
-
-async def check_volume():
-    global sp
-    global current_volume
-    info = spotify.current_playback()
-
-    new_volume = volume_format(info.get("device", {}).get("volume_percent", 1))
-    if current_volume != new_volume:
-        current_volume = new_volume
-        await broadcast("update", volume=new_volume)
+        await broadcast(app, "update", **ret)
 
 
 def get_local_artwork(name):
@@ -390,30 +397,37 @@ def get_local_artwork(name):
     return LOCAL_ARTWORK_PATH
 
 
-async def check_now_playing(spotify):
-    global current_track, current_playing_state, sp
+async def check_now_playing(
+    app: web.Application, spotify: Spotify, current_context: SpotifyContext
+) -> None:
+    """Checks for current Spotify state and updates PolyPop in case of changes
+
+    Args:
+        app (web.Application): _description_
+        spotify (Spotify): _description_
+        current_context (SpotifyContext): _description_
+    """
     track = spotify.currently_playing()
-    track_id = track.get("item", {}).get("id")
+    track_id = track.get("item", {}).get("id", None)
     is_playing = track.get("is_playing")
 
-    if is_playing != current_playing_state:
-        old_playing_state = current_playing_state
-        current_playing_state = is_playing
-        if old_playing_state is None:
-            current_track = track_id
-            return
-        if not is_playing:
-            await broadcast("playing_stopped")
+    if current_context.is_playing is None:
+        current_context.track = track_id
+        return
+
+    if is_playing != current_context.is_playing:
+        current_context.is_playing = is_playing
+
+        if is_playing is None:
+            await broadcast(app, "playing_stopped")
             return
 
-        if track["item"]["is_local"]:
-            if local_artwork := get_local_artwork(track["item"]["uri"].split(":")[-2]):
-                track["item"]["album"]["images"] = [
-                    {"url": local_artwork.replace("/", "\\")}
-                ]
-        logger.debug("start")
+        if track["item"]["is_local"] and (
+            local_artwork := get_local_artwork(track["item"]["uri"].split(":")[-2])
+        ):
+            track["item"]["album"]["images"] = [{"url": f"file/{local_artwork}"}]
         logger.debug(track)
-        await broadcast("started_playing", **track)
+        await broadcast(app, "started_playing", **track)
 
     if current_track == track_id:
         return
@@ -425,24 +439,26 @@ async def check_now_playing(spotify):
             track["item"]["album"]["images"] = [
                 {"url": local_artwork.replace("/", "\\")}
             ]
-    await broadcast("song_changed", **track)
+    await broadcast(app, "song_changed", **track)
 
 
-def update_settings(data):
+def update_settings(app: web.Application, spotify: Spotify, data: dict) -> None:
     global current_shuffle, current_repeat
     new_shuffle = data.get("shuffle_state")
     new_repeat = data.get("repeat_state")
     if new_shuffle:
-        shuffle({"state": new_shuffle})
+        shuffle(spotify, {"state": new_shuffle})
         current_shuffle = new_shuffle
     if new_repeat:
-        repeat({"state": new_repeat})
+        repeat(spotify, {"state": new_repeat})
         current_repeat = new_repeat
 
 
 async def on_connected(websocket, data):  # noqa
     try:
-        await create_spotify()
+        spotify = await create_spotify(websocket.app)
+        if spotify is not None:
+            app["spotify"] = spotify
     except Exception as e:  # noqa
         logger.exception(e)
 
@@ -471,7 +487,10 @@ track_funcs_with_data = {
 
 
 async def websocket_handler(
-    request: web.Request, app: web.Application | None = None
+    app: web.Application,
+    spotify: Spotify,
+    request: web.Request,
+    app: web.Application | None = None,
 ) -> None:
     action = message.data.action
 
@@ -505,14 +524,14 @@ async def websocket_handler(
             func()
             return
     except SpotifyException as e:
-        await broadcast("error", command="play", msg=e.msg, reason=e.reason)
+        await broadcast(app, "error", command="play", msg=e.msg, reason=e.reason)
         logger.exception(e)
 
     if action == "logout":
         if os.path.exists(SPOTIFY_CACHE_DIR):
             os.remove(SPOTIFY_CACHE_DIR)
     elif action == "play":
-        await play(data)
+        await play(app, spotify, current_conte0xt, data)
     elif action == "refresh_devices":
         await refresh_devices()
     elif action == "refresh_playlists":
