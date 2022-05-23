@@ -1,0 +1,57 @@
+body {
+  display: -ms-flexbox;
+  display: -webkit-box;
+  display: flex;
+  -ms-flex-align: center;
+  -ms-flex-pack: center;
+  -webkit-box-align: center;
+  align-items: center;
+  -webkit-box-pack: center;
+  justify-content: center;
+  padding-top: 200px;
+  padding-bottom: 80px;
+}
+
+.container-sm {
+  padding: 30px;
+  font-family: "bebas neue", "serif";
+}
+
+.logo {
+  position: relative;
+  margin-top: -165px;
+  margin-left: -2em;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+p {
+  font-size: 1.25rem;
+}
+
+a.text-green {
+  color: #1db954;
+}
+
+a.text-green:hover {
+  color: #39cbcc;
+}
+
+span.small-p {
+  font-size: 1rem;
+}
+
+div.col {
+  justify-content: right;
+  align-items: end;
+  text-align: right;
+}
+
+#align-left {
+  position: relative;
+  justify-content: left;
+  align-items: start;
+  left: 0px;
+}
