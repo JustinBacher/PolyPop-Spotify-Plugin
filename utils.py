@@ -2,28 +2,42 @@ import asyncio
 import webbrowser
 
 from dataclasses import dataclass, asdict
+from glob import glob
 from itertools import count
 from json import dump as json_dump, load as json_load
+from os import environ
 from pathlib import Path
-from typing import Awaitable, Callable, cast
+from socket import gethostname
+from typing import Awaitable
 
 from aiohttp import web
 from spotipy import Spotify
+from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyOAuth, SpotifyOauthError
 from spotipy.cache_handler import CacheFileHandler
 from loguru import logger
+from mutagen import File as SongLookupFile
 
-from ppspotify import LOCAL_ARTWORK_PATH
+from server import Server
 
-HOST, PORT = "localhost", 38045
-LOCAL_URL = Path("http://{HOST}:{PORT}")
-DIRECTORY_PATH = Path(Path.home(), "PolyPop/UIX/Spotify")
-CREDENTIALS_PATH = Path(DIRECTORY_PATH, ".creds")
-SPOTIFY_CACHE_DIR = Path(DIRECTORY_PATH, ".cache")
-SCOPE = (
+SPOTIFY_SCOPE = (
     "user-modify-playback-state,user-read-currently-playing"
     "user-read-playback-state,user-library-read"
 )
+
+# Path related Constants
+DIRECTORY_PATH = Path(Path.home(), "PolyPop/UIX/Spotify")
+LOCAL_ARTWORK_PATH = Path(DIRECTORY_PATH, "artwork.jpg")
+CREDENTIALS_PATH = Path(DIRECTORY_PATH, ".creds")
+SPOTIFY_CACHE_DIR = Path(DIRECTORY_PATH, ".cache")
+COVER_IMAGE_APIC_NAMES = ["APIC:", "data", "cov"]
+
+# PolyPop to Spotify conversion
+REPEAT_STATES = {"Song": "track", "Enabled": "context", "Disabled": "off"}
+
+# URL constants
+HOST, PORT = "localhost", 38045
+LOCALHOST_URL = Path("http://{HOST}:{PORT}")
 
 
 async def exec_every_x_seconds(every: int, func: Awaitable) -> None:
@@ -34,72 +48,66 @@ async def exec_every_x_seconds(every: int, func: Awaitable) -> None:
         func (Callable): function to call
     """
     while True:
-        await asyncio.sleep(every)
         await func
+        await asyncio.sleep(every)
 
 
-class Server(web.Application):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.clients = set[web.WebSocketResponse]()
-
-    async def broadcast(self, action: str, **data) -> None:
-        """Sends a message to all connected clients.
-        There should only be one client connected and it should be PolyPop,
-        but just in case PolyPop retries connection and this client keeps an
-        old connection alive for no reason we will broadcast it out to all connections
-
-        Args:
-            app (web.Application)
-            action (str): The action to perform in PolyPop
-            data (dict, optional): Data related to the action
-        """
-        for client in self.clients:
-            if data:
-                await client.send_json({"action": action, "data": data})
-            else:
-                await client.send_json({"action": action})
-
-
-class Credentials:
+@dataclass(
+    repr=False,
+)
+class CredentialsManager:
     """Slightly shadow's Spotipy's auth manager due to it having issues
     handling cache and token refreshing
 
     Returns:
         _type_: _description_
     """
+
     __slots__ = "client_id", "client_secret", "token", "refresh_token"
-    
-    client_id: str
-    client_secret: str
-    token: str | None
-    refresh_token: str | None
-    
-    def __init__(
-        self, client_id: str | None = None, client_secret: str | None = None
-    ) -> None:
-        if client_id is not None and client_secret is not None:
-            if CREDENTIALS_PATH.exists():
-                with open(CREDENTIALS_PATH) as creds_file:
-                    data = json_load(creds_file)
-                    self.client_id = data["client_id"]
-            raise FileNotFoundError("No credentials file found")
+
+    client_id: str | None
+    client_secret: str | None
+
+    @classmethod
+    def load(cls) -> None:
+        if CREDENTIALS_PATH.exists():
+            with open(CREDENTIALS_PATH) as creds_file:
+                get_val = json_load(creds_file).get
+            self = cls(
+                client_id=get_val("client_id"),
+                client_secret=get_val("client_secret"),
+            )
+
+    @staticmethod
+    def request_credentials() -> None:
+        # Open the browser to the credentials setup page
+        webbrowser.open(Path(LOCALHOST_URL, "/startup").as_uri())
 
     def save(self) -> None:
         with open(CREDENTIALS_PATH, "w") as creds_file:
             json_dump(asdict(self), creds_file)
 
-    def __del__(self) -> None:
-        
+    def auth_manager(self):
+        return SpotifyOAuth(
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            redirect_uri=Path(LOCALHOST_URL, "/oauth_callback").as_uri(),
+            scope=SPOTIFY_SCOPE,
+            cache_handler=CacheFileHandler(SPOTIFY_CACHE_DIR),
+        )
+
+    def logout(self) -> None:
+        SPOTIFY_CACHE_DIR.unlink(True)
 
 
+@dataclass
 class SpotifyContext:
     """Contains the active spotify connection and it's
     current states and settings"""
 
-    __app: web.Application
+    __app: Server
     spotify: Spotify
-    credentials: Credentials | None
+    credentials_manager: CredentialsManager
     shuffle_state: bool | None
     repeat_state: bool | None
     is_playing: bool | None
@@ -130,13 +138,10 @@ class SpotifyContext:
         self.__local_media_folder = value
 
     @staticmethod
-    def ensure_spotify_connection(function: Callable):
-        def inner(self, *args, **kwargs):
-            if self.spotify is None:
-                raise RuntimeError("Spotify not connected")
-            function(*args, **kwargs)
-
-        return inner
+    def login() -> None:
+        """Deletes the cache file and opens the login web page"""
+        CREDENTIALS_PATH.unlink()
+        webbrowser.open(Path(LOCALHOST_URL, "/startup").as_uri())
 
     @classmethod
     async def create_spotify(cls, app: Server) -> Spotify | None:
@@ -149,27 +154,17 @@ class SpotifyContext:
         Returns:
             Spotify | None: Returns Spotify if successful, otherwise None
         """
-        try:
-            creds = Credentials.load()
-        except FileNotFoundError:
-            return None
+        self = cls(app)
 
-        auth_manager = SpotifyOAuth(
-            client_id=creds.client_id,
-            client_secret=creds.client_secret,
-            redirect_uri=Path(LOCAL_URL, "/oauth_callback").as_uri(),
-            scope=SCOPE,
-            cache_handler=CacheFileHandler(SPOTIFY_CACHE_DIR),
+        if CREDENTIALS_PATH.exists():
+            self.credentials_manager
+        spotify = Spotify(
+            client_credentials_manager=self.credentials_manager.auth_manager
         )
-
-        self = SpotifyContext(app)
-
-        spotify = Spotify(client_credentials_manager=auth_manager)
         self.spotify = spotify
-        me = spotify.me()
-        current_playback = spotify.current_playback() or {}
+        me = self.spotify.me()
+        current_playback = self.spotify.current_playback() or {}
         profile_image = me.get("images")
-        self.spotify = spotify
         self.devices = self.get_devices()
         self.current_device = current_playback.get("device")
         self.current_track = current_playback.get("item")
@@ -192,35 +187,20 @@ class SpotifyContext:
 
         asyncio.create_task(exec_every_x_seconds(1, self.check_now_playing()))
         asyncio.create_task(exec_every_x_seconds(5, self.check_spotify_settings()))
+        asyncio.create_task(exec_every_x_seconds(1800, self.refresh_spotify()))
 
-    async def refresh_spotify(self) -> Spotify:
-        """Recreates/refreshes the Spotify Client
+    async def refresh_spotify(self) -> None:
+        self.spotify.auth_manager.get_access_token()  # type: ignore | Spotipy didn't do type hinting
 
-        Args:
-            spotify (Spotify)
-            auth_token (str | None, optional): Defaults to None.
-
-        Returns:
-            Spotify | None: New Spotify Client
-        """
-        auth_manager = cast(
-            SpotifyOAuth, self.spotify.auth_manager
-        )  # To appease PyLance
-        auth_token = auth_token or auth_manager.cache_handler.get_cached_token()
-        if auth_manager.is_token_expired(auth_token):
-            _spotify = await create_spotify(app)
-            if _spotify is not None:
-                return spotify
-
-        raise RuntimeError("Error while refreshing Spotify Client")
-
-    @staticmethod
-    def request_spotify_credentials() -> None:
-        # delete the cache if it exists
-        SPOTIFY_CACHE_DIR.unlink(True)
-
-        # Open the browser to the credentials setup page
-        webbrowser.open(Path(LOCAL_URL, "/startup").as_uri())
+    def update_settings(self, data: dict) -> None:
+        new_shuffle = data.get("shuffle_state")
+        new_repeat = data.get("repeat_state")
+        if new_shuffle:
+            self.shuffle({"state": new_shuffle})
+            self.shuffle_state = new_shuffle
+        if new_repeat:
+            self.repeat({"state": new_repeat})
+            self.repeat_state = new_repeat
 
     def get_all_playlists(self) -> dict:
         """Gets all of the current users playlists
@@ -233,7 +213,7 @@ class SpotifyContext:
         """
         playlists = {}
         for i in count(step=50):
-            pl = spotify.current_user_playlists(offset=i)
+            pl = self.spotify.current_user_playlists(offset=i)
             playlists.update({p.get("name"): p.get("uri") for p in pl.get("items")})
             if pl.get("next") is None:
                 break
@@ -252,13 +232,13 @@ class SpotifyContext:
             dict: {device name: device id, ...}
         """
         global devices
-        devices = {d.get("name"): d.get("id") for d in spotify.devices().get("devices")}
+        devices = {
+            d.get("name"): d.get("id") for d in self.spotify.devices().get("devices")
+        }
         return devices
 
     async def play(
-        app: web.Application,
-        spotify: Spotify,
-        current_context: SpotifyContext,
+        self,
         data: dict,
         retries: int = 0,
     ) -> None:
@@ -268,93 +248,94 @@ class SpotifyContext:
         Args:
             app (web.Application)
             spotify (Spotify)
-            current_context (SpotifyContext)
+            self (SpotifyContext)
             data (dict)
             retries (int, optional): Number of times to try downgrading Play event. Defaults to 0.
         """
         device_id = (
-            devices.get(data.get("device_name", None), False) or current_context.device
+            devices.get(data.get("device_name", None), False) or self.current_device
         )
         playlist_uri = data.get("playlist_uri")
         song_uri = data.get("track_uri")
         logger.debug(device_id)
 
-        if current_context.is_playing and playlist_uri is not None:
+        if self.is_playing and playlist_uri is not None:
             return
 
         try:
             if playlist_uri:
-                spotify.start_playback(device_id=device_id, context_uri=playlist_uri)
+                self.spotify.start_playback(
+                    device_id=device_id, context_uri=playlist_uri
+                )
             elif song_uri:
-                spotify.start_playback(device_id=device_id, uris=[song_uri])
+                self.spotify.start_playback(device_id=device_id, uris=[song_uri])
             else:
-                spotify.start_playback(device_id=device_id)
+                self.spotify.start_playback(device_id=device_id)
         except SpotifyException as e:
             if retries == 0:
-                data["device_name"] = socket.gethostname()
-                return await play(app, spotify, current_context, data, 1)
+                data["device_name"] = gethostname()
+                return await self.play(data, 1)
             elif retries == 1:
                 data["device_name"] = environ["COMPUTERNAME"]
-                return await play(app, spotify, current_context, data, 2)
+                return await self.play(data, 2)
             else:
-                await broadcast(
-                    app, "error", command="play", msg=e.msg, reason=e.reason
+                await self.__app.broadcast(
+                    "error", command="play", msg=e.msg, reason=e.reason
                 )
         except Exception as e:
             logger.exception(e)
 
-    def pause(spotify: Spotify) -> None:
+    def pause(self) -> None:
         try:
-            spotify.pause_playback()
+            self.spotify.pause_playback()
         except SpotifyException as e:
             logger.exception(e)
 
-    @ensure_spotify_connection
     def next_track(self) -> None:
         self.spotify.next_track()
 
-    def previous_track(spotify: Spotify) -> None:
+    def previous_track(self) -> None:
         try:
-            spotify.previous_track()
+            self.previous_track()
         except SpotifyException as e:
             logger.exception(e)
 
     def shuffle(self, data: dict) -> None:
         self.spotify.shuffle(data.get("state", False))
 
-    def repeat(spotify: Spotify, data: dict) -> None:
-        spotify.repeat(REPEAT_STATES[data.get("state", "Disabled")])
+    def repeat(self, data: dict) -> None:
+        self.spotify.repeat(REPEAT_STATES[data.get("state", "Disabled")])
 
-    def volume(spotify: Spotify, data: dict) -> None:
-        spotify.volume(data["volume"])
+    def volume(self, data: dict) -> None:
+        self.spotify.volume(data["volume"])
 
-    async def refresh_devices(app: web.Application, spotify: Spotify) -> None:
+    async def refresh_devices(self) -> None:
         """Sends current available devices to client"""
-        await self.__app.broadcast("devices", devices=list(get_devices(spotify)))
+        await self.__app.broadcast("devices", devices=list(self.get_devices()))
 
     async def refresh_playlists(self) -> None:
         """Sends current available playlists to client"""
-        await self.__app.broadcast("playlists", playlists=get_all_playlists(spotify))
+        await self.__app.broadcast("playlists", playlists=self.get_all_playlists())
 
     async def check_spotify_settings(self) -> None:
         """Checks for current spotify settings.
         If something changesthen broadcasts the changes"""
-        info = spotify.current_playback().get
+        info = self.spotify.current_playback().get
         new_shuffle = info("shuffle_state")
         new_repeat = info("repeat_state")
         ret = {}
 
-        if current_context.shuffle_state != new_shuffle:
+        if self.shuffle_state != new_shuffle:
             ret["shuffle_state"] = new_shuffle
-            current_context.shuffle_state = new_shuffle
-        if current_context.repeat_state != new_repeat:
+            self.shuffle_state = new_shuffle
+        if self.repeat_state != new_repeat:
             ret["repeat_state"] = new_repeat
-            current_context.repeat_state = new_repeat
+            self.repeat_state = new_repeat
 
         if ret:
             await self.__app.broadcast("update", **ret)
 
-    def get_local_artwork(self, name: str) -> str | None:
+    def get_local_artwork(self, name: str) -> Path | None:
         """Looks in the local directory recursively to find a matching
         filename to `name` and if so, tries to extract the album cover
         and save it to file and returns the path to the saved image,
@@ -366,13 +347,13 @@ class SpotifyContext:
         Returns:
             str | None: The path to the album cover file or None if not found
         """
-        if local_media_folder is None:
+        if self.local_media_folder is None:
             return None
 
         artwork = None
         logger.debug(f"{name=}")
-        logger.debug(f"File Name: {local_media_folder}*{name}.*")
-        file_names = glob(f"{local_media_folder}*{name}.*", recursive=True)
+        logger.debug(f"File Name: {self.local_media_folder}*{name}.*")
+        file_names = glob(f"{self.local_media_folder}*{name}.*", recursive=True)
 
         logger.debug(f"{file_names=}")
 
@@ -380,7 +361,7 @@ class SpotifyContext:
             return
 
         logger.debug(f"{file_names[0]=}")
-        song_file = File(file_names[0])
+        song_file = SongLookupFile(file_names[0])
         logger.debug(f"{song_file.tags=}")
 
         for apic_name in COVER_IMAGE_APIC_NAMES:
@@ -403,38 +384,42 @@ class SpotifyContext:
         Args:
             app (web.Application): _description_
             spotify (Spotify): _description_
-            current_context (SpotifyContext): _description_
+            self (SpotifyContext): _description_
         """
-        track = spotify.currently_playing()
+        track = self.spotify.currently_playing()
         track_id = track.get("item", {}).get("id")
         is_playing = track.get("is_playing", False)
 
-        if current_context.is_playing is None:
-            current_context.track = track_id
+        if self.is_playing is None:
+            self.track = track_id
             return
 
-        if is_playing != current_context.is_playing:
-            current_context.is_playing = is_playing
+        if is_playing != self.is_playing:
+            self.is_playing = is_playing
 
             if is_playing is None:
                 await self.__app.broadcast("playing_stopped")
                 return
 
             if track["item"]["is_local"] and (
-                local_artwork := get_local_artwork(track["item"]["uri"].split(":")[-2])
+                local_artwork := self.get_local_artwork(
+                    track["item"]["uri"].split(":")[-2]
+                )
             ):
                 track["item"]["album"]["images"] = [{"url": f"file/{local_artwork}"}]
             logger.debug(track)
             await self.__app.broadcast("started_playing", **track)
 
-        if current_track == track_id:
+        if self.current_track == track_id:
             return
 
         current_track = track_id
 
         if track["item"]["is_local"]:
-            if local_artwork := get_local_artwork(track["item"]["uri"].split(":")[-2]):
+            if local_artwork := self.get_local_artwork(
+                track["item"]["uri"].split(":")[-2]
+            ):
                 track["item"]["album"]["images"] = [
-                    {"url": local_artwork.replace("/", "\\")}
+                    {"url": local_artwork.as_uri().replace("/", "\\")}
                 ]
         await self.__app.broadcast("song_changed", **track)
