@@ -1,5 +1,4 @@
-import asyncio
-import webbrowser
+import sys
 
 from json import loads as json_loads
 from pathlib import Path
@@ -7,26 +6,14 @@ from typing import Callable, cast
 
 import aiohttp
 
-from aiohttp import web
+from aiohttp import WSMsgType, web
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
-from spotipy import Spotify
-from spotipy.exceptions import SpotifyException
 
 from server import Server
-from utils import (
-    CREDENTIALS_PATH,
-    DIRECTORY_PATH,
-    HOST,
-    PORT,
-    LOCAL_ARTWORK_PATH,
-    Server,
-    CredentialsManager,
-    SpotifyContext,
-)
+from utils import DIRECTORY_PATH, HOST, PORT
 
 STATIC_PATH = Path(DIRECTORY_PATH, "backend/templates/dist/static")
-
 
 logger.add(Path(DIRECTORY_PATH, "debug.log"), rotation="1 day", retention="5 days")
 routes = web.RouteTableDef()
@@ -35,11 +22,6 @@ jinja_env = Environment(
     loader=FileSystemLoader(Path(DIRECTORY_PATH, "backend/templates/dist")),
     autoescape=select_autoescape(),
 )
-
-
-# -------------------------------------------------------------------------------------
-#                                   Spotify Methods
-# -------------------------------------------------------------------------------------
 
 
 @routes.get("/credential_callback")
@@ -52,16 +34,17 @@ async def oauth_callback(request: web.Request) -> web.Response:
     Returns:
         web.Response
     """
-    app = cast(Server, request.app)
     query = request.url.query
-    # If somehow the user didn't supply the Client ID and Secret then error out
+
     if not {"client_id", "client_secret"}.issubset(query):
+        # If somehow the user didn't supply the Client ID and Secret then error out
         return web.Response(body="Missing Credentials")
 
-    creds = CredentialsManager.load()
+    app = cast(Server, request.app)
+    payload = await app.context.create_spotify()
+    spotify = app.context.spotify
 
-    spotify = await SpotifyContext.create_spotify(app)
-    if spotify is None:
+    if payload is None or spotify is None:
         return web.Response(body="Authorization Error")
 
     return web.Response(
@@ -72,99 +55,136 @@ async def oauth_callback(request: web.Request) -> web.Response:
     )
 
 
-async def websocket_handler(
-    app: Server, spotify: Spotify, request: web.Request
-) -> None:
+async def websocket_handler(app: Server, request: web.Request) -> None:
     """Handles messages from websocket connections
 
     Args:
         app (Server)
-        spotify (Spotify)
         request (web.Request)
     """
-    ws = web.WebSocketResponse()
+    websocket = web.WebSocketResponse()
 
-    await ws.prepare(request)
+    await websocket.prepare(request)
 
-    async for msg in ws:
-        if msg.type == aiohttp.WSMsgType.TEXT:
-            data = json_loads(msg.data)
-            action = data["action"]
+    async for payload in websocket:
+        match payload.type:
+            case WSMsgType.TEXT:
+                try:
+                    data = json_loads(payload.data)
+                    logger.debug(f"Action: {payload}")
 
-            if action == "close":
-                await ws.close()
-            else:
-                logger.debug(f"Action: {action}")
+                    if not isinstance(data, (list, tuple)):
+                        raise ValueError
+
+                except ValueError:
+                    logger.debug(f"failed to load message from websocket. Contents: {payload}")
+                    continue
+
                 try:
                     await handle_actions(app, data)
+
                 except ConnectionResetError:
                     logger.info("Websocket Reset")
-                    app["config"]["polyclients"].remove(ws)
+                    app.clients.remove(websocket)
 
-        elif msg.type == aiohttp.WSMsgType.ERROR:
-            logger.warning(f"ws connection closed with exception {ws.exception()}")
-            app.clients.remove(ws)
+            case aiohttp.WSMsgType.ERROR:
+                logger.warning(f"ws connection closed with exception {websocket.exception()}")
+                app.clients.remove(websocket)
 
     logger.warning(f"Client {request.url} connection closed")
 
 
-async def handle_actions(app: Server, data: dict) -> None:
-    match data:
-        case "login":
-            app.context.login()
+async def handle_actions(app: Server, payload: list | tuple) -> None:
+    """Performs the actions sent to the websocket service
 
-        case "volume", vol:
-            app.context.volume(data[vol])
+    Args:
+        app (Server)
+        data (dict)
+    """
+    match payload:
+
+        case ["login", *_]:
+            response = app.context.request_credentials_from_user()
+
+        case ["logout", *_]:
+            response = app.context.logout()
+
+        case ["play", data]:
+            response = await app.context.play(data)
+
+        case ["refresh_devices", *_]:
+            response = await app.context.refresh_devices()
+
+        case ["refresh_playlists", *_]:
+            response = await app.context.refresh_playlists()
+
+        case ["pause", *_]:
+            if app.context.spotify is None:
+                return
+
+            response = app.context.spotify.pause_playback()
+
+        case ["next", *_]:
+            if app.context.spotify is None:
+                return
+
+            response = app.context.spotify.next_track()
+
+        case ["previous", *_]:
+            if app.context.spotify is None:
+                return
+
+            response = app.context.spotify.previous_track()
+
+        case ["get_devices", *_]:
+            response = app.context.get_devices()
+
+        case ["update", data]:
+            response = app.context.update_settings(data)
+
+        case ["quit", *_]:
+            for client in app.clients:
+                await client.close()
+            sys.exit()
+
+        case _:
+            response = None
+
+    if response is not None:
+        if len(response) == 1:
+            await app.broadcast(response[0])
             return
 
-        case "logout":
-            app.context.credentials_manager.logout()
-        case "play", data:
-            await app.context.play(data)
-        case "refresh_devices":
-            await app.context.refresh_devices()
-        case "refresh_playlists":
-            await app.context.refresh_playlists()
-        case "quit":
-            for client in app.clients:
-                try:
-                    await client.close()
-                finally:
-                    quit()
-
+        await app.broadcast(response[0], **response[1])
 
 @web.middleware
 async def error_middleware(request: web.Request, handler: Callable) -> web.Response:
-    try:
-        response = await handler(request)
-        # this is needed to handle ``return web.HTTPNotFound()`` case
-        if response.status == 404:
-            return web.Response(text="First custom 404 message", status=404)
-        return response
-    except web.HTTPException as ex:
-        # this is needed to handle ``raise web.HTTPNotFound()`` case
-        if ex.status == 404:
-            return web.Response(text="Second custom 404 message", status=404)
-        raise
-    # this is needed to handle non-HTTPException
-    except Exception as e:
-        logger.exception(e)
-        return web.Response(text="Oops, something went wrong", status=500)
-
-
-async def setup_context(app: Server) -> None:
-    """Runs just before the Applpication is instantiated,
-    so we can setup any context variables
+    """Handles Routing errors and serves custom error pages.
 
     Args:
-        app (Server): Used for Application Context
-    """
-    app["spotify_context"] = await app.context.create_spotify(app)
-    # Connected WebSocket Clients (Should be one and it should be PolyPop)
-    app["clients"] = set[web.WebSocketResponse]()
-    # Background Fetching for current Spotify state
-    app["tasks"] = list[asyncio.Task]()
+        request (web.Request): The request made by the user
+        handler (Callable): The function provided by the original router
 
+    Returns:
+        web.Response: Either the intended response or a custom error response in lue of vanity
+    """
+    try:
+        return await handler(request)
+
+    except web.HTTPException as error:
+        match error.status:
+            case 404:
+                return web.Response(text="Custom 404 message", status=404)
+
+            case status:
+                return web.Response(
+                    text=(
+                        "Oops, we encountered an error. Please check your URL."
+                    ),
+                    status=status
+                )
+
+        logger.exception(error)
 
 async def cleanup_context(app: Server) -> None:
     """Runs before program shutdown to gracefully close any active connections
@@ -172,34 +192,18 @@ async def cleanup_context(app: Server) -> None:
     Args:
         app (Server): Used for Application Context
     """
+    app.context.close()
 
-    # Shutdown Spotify
-    await app["spotify"].close()
-    # close any clients
-    for client in app["clients"]:
-        await client.close()
-    # Stop any running tasks
-    for task in app["tasks"]:
-        task.cancel()
-
-
-def main() -> None:
-    """Main Program... duh"""
+def main() -> None:  # pylint: disable=missing-function-docstring
     app = Server(middlewares=[error_middleware])
     app.add_routes(routes)
-    app.on_startup.append(setup_context)
-    app.on_cleanup.append(cleanup_context)
+    app.on_cleanup.append(cleanup_context)  # type: ignore
 
-    while True:
-        # Using try here so we can attempt to keep the program running in
-        # the background no matter what
-        try:
-            web.run_app(app, host=HOST, port=PORT)
-        except Exception as e:  # noqa: Kepp it movin... Nothing to see here!
-            logger.exception(e)
-
-    logger.info("Server closed gracefully")
-
+    try:
+        web.run_app(app, host=HOST, port=PORT)
+    except Exception as error: # pylint: disable=broad-except
+        logger.exception(error)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

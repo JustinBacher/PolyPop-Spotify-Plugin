@@ -1,13 +1,19 @@
+"""Custom wrapper for `aiohttp.web.Application"""
+
+import asyncio
+
 from aiohttp.web import Application, WebSocketResponse
 
 from utils import SpotifyContext
 
 
 class Server(Application):
+    """Custom wrapper for `aiohttp.web.Application"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.clients = set[WebSocketResponse]()
-        self.context = SpotifyContext(self)
+        self.context = SpotifyContext()
+        self.tasks = list[asyncio.Task]()
 
     async def broadcast(self, action: str, **data) -> None:
         """Sends a message to all connected clients.
