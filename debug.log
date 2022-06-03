@@ -1,0 +1,3 @@
+2022-06-02 20:09:11.386 | DEBUG    | __main__:websocket_handler:96 - Action: WSMessage(type=<WSMsgType.TEXT: 1>, data='["login"]', extra='')
+2022-06-02 20:09:11.389 | DEBUG    | backend.utils:request_credentials_from_user:192 - http://localhost:38045
+2022-06-02 20:09:11.390 | DEBUG    | backend.utils:request_credentials_from_user:193 - http://localhost:38045/startup

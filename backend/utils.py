@@ -1,4 +1,4 @@
-"""Utility module"""
+"""Contains constants and the context class for the PolyPop Service"""
 
 import asyncio
 import io
@@ -19,6 +19,7 @@ from spotipy.oauth2 import SpotifyOAuth
 from spotipy.cache_handler import CacheFileHandler
 from loguru import logger
 from mutagen import File as SongLookupFile
+from yarl import URL
 
 SPOTIFY_SCOPE = (
     "user-modify-playback-state,user-read-currently-playing"
@@ -26,10 +27,10 @@ SPOTIFY_SCOPE = (
 )
 
 # Path related Constants
-DIRECTORY_PATH = Path(Path.home(), "PolyPop/UIX/Spotify")
-LOCAL_ARTWORK_PATH = Path(DIRECTORY_PATH, "artwork.jpg")
-CREDENTIALS_PATH = Path(DIRECTORY_PATH, ".creds")
-SPOTIFY_CACHE_DIR = Path(DIRECTORY_PATH, ".cache")
+DIRECTORY_PATH = Path.home().joinpath("PolyPop/UIX/Sources/PolyPop-Spotify-Plugin")
+LOCAL_ARTWORK_PATH = DIRECTORY_PATH.joinpath("artwork.jpg")
+CREDENTIALS_PATH = DIRECTORY_PATH.joinpath(".creds")
+SPOTIFY_CACHE_DIR = DIRECTORY_PATH.joinpath(".cache")
 COVER_IMAGE_APIC_NAMES = ["APIC:", "data", "cov"]
 
 # PolyPop to Spotify conversion
@@ -37,7 +38,7 @@ REPEAT_STATES = {"Song": "track", "Enabled": "context", "Disabled": "off"}
 
 # URL constants
 HOST, PORT = "localhost", 38045
-LOCALHOST_URL = Path("http://{HOST}:{PORT}")
+LOCALHOST_URL = URL(f"http://{HOST}:{PORT}")
 
 
 async def exec_every_x_seconds(every: int, func: Awaitable) -> asyncio.Task:
@@ -120,7 +121,7 @@ class CredentialsManager:
         return SpotifyOAuth(
             client_id=self.client_id,
             client_secret=self.client_secret,
-            redirect_uri=Path(LOCALHOST_URL, "/oauth_callback").as_uri(),
+            redirect_uri=LOCALHOST_URL.with_path("/oauth_callback"),
             scope=SPOTIFY_SCOPE,
             cache_handler=CacheFileHandler(SPOTIFY_CACHE_DIR),
         )
@@ -186,9 +187,11 @@ class SpotifyContext:
                 Defaults to True.
         """
         if delete_old:
-            CREDENTIALS_PATH.unlink()
+            CREDENTIALS_PATH.unlink(True)
 
-        webbrowser.open(Path(LOCALHOST_URL, "/startup").as_uri())
+        logger.debug(LOCALHOST_URL)
+        logger.debug(LOCALHOST_URL.with_path("/startup"))
+        webbrowser.open(LOCALHOST_URL.with_path("/startup").human_repr())
 
     def logout(self) -> None:
         """alias for CredentialsManager.logout"""

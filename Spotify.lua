@@ -74,7 +74,7 @@ end
 
 function Instance:attemptConnection()
 	local host = getNetwork():getHost("localhost")
-	self.webSocket = host:openWebSocket("ws://localhost:38041")
+	self.webSocket = host:openWebSocket("ws://localhost:38045/ws")
 	self.webSocket:setAutoReconnect(true)
 
 	self.webSocket:addEventListener("onMessage", self, self.onMessage)
@@ -84,9 +84,7 @@ function Instance:attemptConnection()
 end
 
 function Instance:_onWsConnected()
-	self.webSocket:send(json.encode(
-		{ action="connected_handshake",data={ client_id=self.properties.client_id, client_secret=self.properties.client_secret } }
-	))
+
 end
 
 function Instance:_onWsDisconnected()
@@ -108,14 +106,14 @@ function Instance:onSpotifyConnect(data)
 	local tblImages = {}
 	tblImages["Profile Image"] =data.user_image_url
 	self.UserImageGroup:setObjects(tblImages)
-	
+
 	local playlists = {}
 	self.playlists = data.playlists
 	for k, _ in pairs(data.playlists) do
 		table.insert(playlists, k)
 	end
 	self.properties.Controls:find("Playlist"):setElements(playlists)
-	
+
 	if not self.devices.current_device then
 		self.devices.current_device =data.current_device
 	end
@@ -167,8 +165,7 @@ function Instance:onMessage(msg)
 end
 
 function Instance:Login()
-	print(os.getenv('SPOTIFY_PORT'))
-	self.webSocket:send('{"action": "login"}')
+	self.webSocket:send(json.encode({"login"}))
 end
 
 function Instance:Play(playlist_uri)

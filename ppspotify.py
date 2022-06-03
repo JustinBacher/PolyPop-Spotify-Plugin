@@ -1,25 +1,45 @@
-import sys
+"""Module that serves as the backend service for PolyPop Spotify Plugin
 
+Created by Jab/Jabbey92 for the Polypop Community to be able to
+control spotify from within PolyPop itself
+
+Todo:
+    Get it working again
+
+"""
+
+
+# Importing json.loads like this is really so there's one less lookup performed per request.
 from json import loads as json_loads
-from pathlib import Path
+import sys
 from typing import Callable, cast
 
 import aiohttp
-
 from aiohttp import WSMsgType, web
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
 
-from server import Server
-from utils import DIRECTORY_PATH, HOST, PORT
+from backend.server import Server
+from backend.utils import DIRECTORY_PATH, HOST, PORT
 
-STATIC_PATH = Path(DIRECTORY_PATH, "backend/templates/dist/static")
 
-logger.add(Path(DIRECTORY_PATH, "debug.log"), rotation="1 day", retention="5 days")
+# Create Logger
+logger.add(
+    DIRECTORY_PATH.joinpath("debug.log"),
+    rotation="1 day",
+    retention="5 days"
+)
+
+# Setup Routes and static file service
 routes = web.RouteTableDef()
-routes.static("/static/", STATIC_PATH)
+routes.static(
+    prefix="/static",
+    path=DIRECTORY_PATH.joinpath("static"),
+)
+
+# Create template renderer
 jinja_env = Environment(
-    loader=FileSystemLoader(Path(DIRECTORY_PATH, "backend/templates/dist")),
+    loader=FileSystemLoader(DIRECTORY_PATH.joinpath("templates")),
     autoescape=select_autoescape(),
 )
 
@@ -55,7 +75,8 @@ async def oauth_callback(request: web.Request) -> web.Response:
     )
 
 
-async def websocket_handler(app: Server, request: web.Request) -> None:
+@routes.get("/ws")
+async def websocket_handler(request: web.Request) -> web.Response:
     """Handles messages from websocket connections
 
     Args:
@@ -65,6 +86,7 @@ async def websocket_handler(app: Server, request: web.Request) -> None:
     websocket = web.WebSocketResponse()
 
     await websocket.prepare(request)
+    app = cast(Server, request.app)
 
     async for payload in websocket:
         match payload.type:
@@ -92,7 +114,23 @@ async def websocket_handler(app: Server, request: web.Request) -> None:
                 app.clients.remove(websocket)
 
     logger.warning(f"Client {request.url} connection closed")
+    return web.Response(body="Websocket Closed")
 
+
+@routes.get("/startup")
+async def startup(request: web.Request) -> web.Response:  # pylint: disable=unused-argument
+    """Renders the page for requesting the users credentials
+
+    Args:
+        request (web.Request): Request from the user
+
+    Returns:
+        web.Response: Rendered page
+    """
+    return web.Response(
+        body=jinja_env.get_template("setup.html").render(),
+        content_type="text/html",
+    )
 
 async def handle_actions(app: Server, payload: list | tuple) -> None:
     """Performs the actions sent to the websocket service
@@ -177,6 +215,7 @@ async def error_middleware(request: web.Request, handler: Callable) -> web.Respo
                 return web.Response(text="Custom 404 message", status=404)
 
             case status:
+                logger.exception(error)
                 return web.Response(
                     text=(
                         "Oops, we encountered an error. Please check your URL."
@@ -201,6 +240,7 @@ def main() -> None:  # pylint: disable=missing-function-docstring
 
     try:
         web.run_app(app, host=HOST, port=PORT)
+
     except Exception as error: # pylint: disable=broad-except
         logger.exception(error)
         sys.exit(1)
