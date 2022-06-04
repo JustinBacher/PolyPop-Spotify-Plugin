@@ -1,8 +1,9 @@
 require "imagegroup"
 
-local repeat_states = { track='Song', context='Enabled', off='Disabled' }
+local repeat_states = { track="Song", context="Enabled", off="Disabled" }
 
 Instance.devices = {}
+Instance.UserImageGroup = nil
 
 Instance.properties = properties({
 	{ name="client_id", type="Text" },
@@ -13,25 +14,29 @@ Instance.properties = properties({
 		{ name="Device", type="PropertyGroup", items={
 			{ name="PlaybackDevice", type="Enum", items=Instance.devices, onUpdate="onDeviceUpdate" },
 			{ name="RefreshDevices", type="Action" }
-		}, ui={expand=false}}
-	}},
+		}, ui={expand=false} }
+	} },
 	{ name="Controls", type="PropertyGroup", ui={expand=false}, items={
 		{ name="Play", type="Action" },
 		{ name="Pause", type="Action" },
 		{ name="Next", type="Action" },
 		{ name="Previous", type="Action" },
 		{ name="Modes", type="PropertyGroup", ui={expand=false}, items={
-			{ name="Shuffle", type="Bool", value=False, onUpdate="onShuffleUpdate" },
-			{ name="Repeat", type="Enum", items={"Disabled", "Enabled", "Song"}, value='Disabled', onUpdate="onRepeatUpdate" }
-		}},
-		{ name="Playlist", type="Enum", items={"No Playlists"}},
+			{ name="Shuffle", type="Bool", value=false, onUpdate="onShuffleUpdate" },
+			{ name="Repeat", type="Enum", items={
+				"Disabled", "Enabled", "Song"
+			}, value="Disabled", onUpdate="onRepeatUpdate" }
+		} },
+		{ name="Playlist", type="Enum", items={"No Playlists"} },
 		{ name="PlayPlaylist", type="Action" },
-		{ name="Volume", type="Real", units="NormalPercent", range={min=0, max=1}, ui={stride=0.2}, value=1, onUpdate="onVolumeUpdate" },
+		{ name="Volume", type="Real", units="NormalPercent", range={
+			min=0, max=1
+		}, ui={stride=0.2}, value=1, onUpdate="onVolumeUpdate" },
 		{ name="Search", type="PropertyGroup", ui={expand=false}, items={
 			{ name="QueryString", type="Text" },
 			{ name="Queue", type="Action" }
-		}}
-	}},
+		} }
+	} },
 	{ name="Alerts", type="PropertyGroup", items={
 		{ name="onSongChange", type="Alert", args={
 			title="[Title]",
@@ -42,65 +47,71 @@ Instance.properties = properties({
 			title="[Title]",
 			artist="[Artist]",
 			requested_by="[Requested_By]",
-			cover_image_url="[URL]"}},
+			cover_image_url="[URL]"} },
 		{ name="onPause", type="Alert" }
-	}}
-})
+	} }
+} )
 
-Instance.UserImageGroup = nil
-
-function Instance:onInit()
-    getOS():run("Spotify Service", getLocalFolder() .. "ppspotify.exe")
-	getUI():setUIProperty({
+function Instance:onInit( )
+    getOS( ):run("Spotify Service", getLocalFolder( ) .. "ppspotify.exe")
+	getUI( ):setUIProperty({
 		{ obj=self.properties:find("client_id"), visible=false },
 		{ obj=self.properties:find("client_secret"), visible=false },
-	})
+	} )
 	self.properties.Settings.Status = "Disconnected"
-	self.UserImageGroup = createImageGroup(self:getObjectKit(), "UserImageGroup")
-	self:connect()
+	self.UserImageGroup = createImageGroup(self:getObjectKit( ), "UserImageGroup")
+	self:connect( )
 end
 
 function Instance:send(cmd)
-	if (not self.webSocket or not self.webSocket:isConnected()) then
+	if not self.webSocket or not self.webSocket:isConnected( ) then
 		return
 	end
 
 	self.webSocket:send(cmd)
 end
 
-function Instance:connect()
-	self:attemptConnection()
+function Instance:send_action(action, data)
+	if data then
+		return self:send(json.encode{ action, data })
+	end
+
+	self:send(json.encode{ action })
 end
 
-function Instance:attemptConnection()
-	local host = getNetwork():getHost("localhost")
+function Instance:connect( )
+	self:attemptConnection( )
+end
+
+function Instance:attemptConnection( )
+	local host = getNetwork( ):getHost("localhost")
 	self.webSocket = host:openWebSocket("ws://localhost:38045/ws")
 	self.webSocket:setAutoReconnect(true)
 
+	-- Event Listeners
 	self.webSocket:addEventListener("onMessage", self, self.onMessage)
 	self.webSocket:addEventListener("onConnected", self, self._onWsConnected)
 	self.webSocket:addEventListener("onDisconnected", self, self._onWsDisconnected)
+end
+
+function Instance:_onWsConnected( )
 
 end
 
-function Instance:_onWsConnected()
-
-end
-
-function Instance:_onWsDisconnected()
+function Instance:_onWsDisconnected( )
 
 end
 
 function Instance:onSpotifyConnect(data)
-	getUI():setUIProperty({
+	getUI( ):setUIProperty({
 		{ obj=self.properties:find("Controls"), expand=true },
 		{ obj=self.properties:find("Alerts"), expand=true }
-	})
+	} )
 
 	self.properties.Settings.Status = "Connected as: " ..data.name
 	self.properties.client_id =data.client_id
-	self.properties.client_secret =data.client_secret
-	self.devices.all_devices =data.devices
+	self.properties.client_secret = data.client_secret
+	self.devices.all_devices = data.devices
 	self.properties.Settings.Device:find("PlaybackDevice"):setElements(self.devices.all_devices)
 
 	local tblImages = {}
@@ -109,9 +120,11 @@ function Instance:onSpotifyConnect(data)
 
 	local playlists = {}
 	self.playlists = data.playlists
+
 	for k, _ in pairs(data.playlists) do
 		table.insert(playlists, k)
 	end
+
 	self.properties.Controls:find("Playlist"):setElements(playlists)
 
 	if not self.devices.current_device then
@@ -130,7 +143,7 @@ function Instance:onSpotifyConnect(data)
 	for _, v in pairs(self.devices.all_devices) do
 		if self.devices.current_device == v then
 			return end
-		device_in_devices = True
+		device_in_devices = true
 		self.properties.Settings.Device:find("PlaybackDevice"):setValue(v)
 	end
 
@@ -140,76 +153,98 @@ function Instance:onMessage(msg)
 	local payload = json.decode(msg)
 	local action, data = payload.action, payload.data
 
-	if action == 'spotify_connect' then
-		self:onSpotifyConnect(data)
-	end
-	if action == 'song_changed' then
-		self:onSongChanged(data)
-	end
-	if action == 'update' then
-		self:onUpdateSettings(data)
-	end
-	if action == 'devices' then
-		self.devices.all_devices =data.devices
-		self.properties.Settings.Device:find("PlaybackDevice"):setElements(self.devices.all_devices)
-	end
+	local case = {
+		["spotify_connect"] = function( )
+			self:onSpotifyConnect(data)
+		end,
 
-	if action == 'error' then
-		local command = data.command
-		if data.command == 'play' then
-			self.devices.current_device = nil
-			self:PlayPlaylist()
+		["song_changed"] = function( )
+			self:onSongChanged(data)
+		end,
+
+		["update"] = function( )
+			self:onUpdateSettings(data)
+		end,
+
+		["devices"] = function( )
+			self.devices.all_devices =data.devices
+			self.properties.Settings.Device:find("PlaybackDevice"):setElements(
+				self.devices.all_devices
+			)
+		end,
+
+		["error"] = function( )
+			if data.command == "play" then
+				self.devices.current_device = nil
+				self:PlayPlaylist( )
+			end
 		end
+	}
+
+	if case[action] then
+		case[action]( )
+	else
+		debug( msg )
 	end
 
 end
 
-function Instance:Login()
-	self.webSocket:send(json.encode({"login"}))
+function Instance:Login( )
+	self.webSocket:send_action("login")
 end
+
 
 function Instance:Play(playlist_uri)
-	local device_name = self.properties.Settings.Device:find("PlaybackDevice"):getValue()
+	local device_name = self.properties.Settings.Device:find("PlaybackDevice"):getValue( )
 	local playlist_arg = ""
+
 	if playlist_uri then
-		playlist_arg = '", "playlist_uri": "' .. playlist_uri
+		playlist_arg = { playlist_uri=playlist_uri }
 	end
-	self:send('{"action": "play", "data": {"device_name": "' .. device_name .. playlist_arg .. '"}}')
+
+	self:send_action("play", { device_name=device_name .. playlist_arg })
 end
 
-function Instance:Pause()
-	self:send('{"action": "pause"}')
+
+function Instance:Pause( )
+	self:send_action("pause")
 end
 
-function Instance:Next()
-	self:send('{"action": "next"}')
+function Instance:Next( )
+	self:send_action("next")
 end
 
-function Instance:Previous()
-	self:send('{"action": "previous"}')
+function Instance:Previous( )
+	self:send_action("previous")
 end
 
-function Instance:onShuffleUpdate()
-	self:send('{"action": "update", "data": {"shuffle_state": ' .. tostring(self.properties.Controls.Modes:find("Shuffle"):getValue()) .. '}}')
+function Instance:onShuffleUpdate( )
+	self:send_action("update", {
+		shuffle_state=self.properties.Controls.Modes:find("Shuffle"):getValue( )
+	} )
 end
 
-function Instance:onRepeatUpdate()
-	self:send('{"action": "update", "data": {"repeat_state": "' .. self.properties.Controls.Modes:find("Repeat"):getValue() .. '"}}')
+function Instance:onRepeatUpdate( )
+	self:send_action("update", {
+		repeat_state=self.properties.Controls.Modes:find("Repeat"):getValue( )
+	} )
 end
 
-function Instance:onVolumeUpdate()
-	self:send('{"action": "update", "data": {"volume": ' .. self.properties.Controls:find("Volume"):getValue() .. '}}')
+function Instance:onVolumeUpdate( )
+	self:send_action("update", {
+		volume=self.properties.Controls:find("Volume"):getValue( )
+	} )
 end
 
 function Instance:onSongChanged(data)
 	local tblImages = {}
 	tblImages["Profile Image"] = data.item.album.images[2].url
 	self.UserImageGroup:setObjects(tblImages)
-	self.properties.Alerts.onSongChange:raise()
+	self.properties.Alerts.onSongChange:raise( )
 end
 
-function Instance:RefreshDevices()
-	self:send('{"action": "get_devices"}')
+function Instance:RefreshDevices( )
+	self:send_action("get_devices")
 end
 
 function Instance:onUpdateSettings(data)
@@ -224,15 +259,15 @@ function Instance:onUpdateSettings(data)
 	end
 end
 
-function Instance:PlayPlaylist()
-	self:Play(self.playlists[self.properties.Controls:find("Playlist"):getValue()])
+function Instance:PlayPlaylist( )
+	self:Play(self.playlists[self.properties.Controls:find("Playlist"):getValue( )])
 end
 
-function Instance:disconnect()
-	if (self.webSocket and self.webSocket:isConnected()) then
-		self:send("disconnect", "unload")
+function Instance:disconnect( )
+	if (self.webSocket and self.webSocket:isConnected( )) then
+		self:send_action("disconnect")
 		if (self.webSocket) then
-			self.webSocket:disconnect()
+			self.webSocket:disconnect( )
 		end
 	end
 end

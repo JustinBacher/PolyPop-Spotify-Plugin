@@ -72,6 +72,7 @@ class CredentialsManager:
     client_id: str | None
     client_secret: str | None
 
+
     @classmethod
     def load_from_file(cls) -> "CredentialsManager":
         """Loads the users credentials from `SPOTIFY_CACHE_PATH`
@@ -88,6 +89,7 @@ class CredentialsManager:
             raise FileNotFoundError(
                 f"Credentials file corrupt. File has been deleted.\nOld Contents:\n{data}"
             )
+
 
         if not CREDENTIALS_PATH.exists():
             raise FileNotFoundError(f'No Credentials File at "{CREDENTIALS_PATH}"')
@@ -107,10 +109,12 @@ class CredentialsManager:
             client_secret=credentials_data["client_secret"]
         )
 
+
     def save_to_file(self) -> None:
         """Saves credentials to file"""
         with open(CREDENTIALS_PATH, "w", encoding="utf-8") as creds_file:
             json_dump(asdict(self), creds_file)
+
 
     def auth_manager(self) -> SpotifyOAuth:
         """Generates an Oauth model
@@ -126,6 +130,7 @@ class CredentialsManager:
             cache_handler=CacheFileHandler(SPOTIFY_CACHE_DIR),
         )
 
+
     def logout(self) -> None:
         """Clears the credentials and deletes the cached version of them
 
@@ -135,24 +140,61 @@ class CredentialsManager:
         try:
             del self.client_id
             del self.client_secret
+
         finally:
             SPOTIFY_CACHE_DIR.unlink()
 
 
-@dataclass
 class SpotifyContext:
-    """Contains the active spotify connection and it's
-    current states and settings"""
+    """Wrapper for the connectionn to Spotify
 
-    spotify: Spotify | None = None
-    credentials_manager: CredentialsManager | None = None
-    shuffle_state: bool | None = None
-    repeat_state: bool | None = None
-    is_playing: bool | None = None
-    playlists: dict | None = None
-    current_device: str | None = None
-    current_track: dict | None = None
-    __local_media_folder: str | None = None
+    Contains the active spotify connection and it's
+    current states and settings
+
+    Args:
+        spotify (Spotify, optional): The Spotify Connection
+        credentials_manager (CredentialsManager, optional)
+        shuffle_state (bool, optional): Spotify's last known shuffle state
+        repeat_state (bool, optional): Spotify's last known repeat state
+        is_playing (bool, optional): Spotify's last known play/pause state
+        playlists (dict, optional):
+        current_device: str | None = None
+        current_track: dict | None = None
+        __local_media_folder: str | None = None
+
+    """
+
+    __slots__ = (
+        "credentials_manager",
+        "spotify",
+        "shuffle_state",
+        "repeat_state",
+        "is_playing",
+        "playlists",
+        "current_device",
+        "current_track",
+        "__local_media_folder",
+    )
+
+
+    def __init__(
+        self,
+        credentials_manager: CredentialsManager | None = None
+    ) -> None:
+        self.credentials_manager = credentials_manager
+
+        # I think this is the best way to basically type hint
+        # without setting values. And without making them global
+        # to the class itself
+        self.spotify: Spotify | None
+        self.shuffle_state: bool | None
+        self.repeat_state: bool | None
+        self.is_playing: bool | None
+        self.playlists: dict | None
+        self.current_device: str | None
+        self.current_track: dict | None
+        self.__local_media_folder: str | None
+
 
     @property
     def local_media_folder(self) -> str | None:
@@ -198,21 +240,33 @@ class SpotifyContext:
         if self.credentials_manager:
             self.credentials_manager.logout()
 
-    async def create_spotify(self) -> tuple | None:
+    async def create_spotify(
+        self,
+        client_id: str | None = None,
+        client_secret: str | None = None
+    ) -> tuple | None:
         """Creates the Spotify Connection
 
         Returns:
             Spotify | None: Returns Spotify if successful, otherwise None
         """
-        try:
-            credentials_manager = CredentialsManager.load_from_file()
-            self.spotify = spotify = Spotify(
-                client_credentials_manager=credentials_manager.auth_manager
+        if client_id is None and client_secret is None:
+            try:
+                credentials_manager = CredentialsManager.load_from_file()
+
+            except FileNotFoundError as error:
+                logger.debug(error.args)
+                return
+
+        else:
+            credentials_manager  = CredentialsManager(
+                client_id=client_id,
+                client_secret=client_secret
             )
 
-        except FileNotFoundError as error:
-            logger.debug(error.args)
-            return
+        self.spotify = spotify = Spotify(
+            client_credentials_manager=credentials_manager.auth_manager
+        )
 
         user_profile = spotify.me()
         current_playback = spotify.current_playback() or {}
@@ -222,7 +276,6 @@ class SpotifyContext:
         self.shuffle_state = current_playback.get("shuffle_state")
         self.repeat_state = current_playback.get("repeat_state")
         self.is_playing = current_playback.get("is_playing")
-        self.playlists = self.get_all_playlists()
 
         return (
             self, (
@@ -232,7 +285,6 @@ class SpotifyContext:
                     "devices": self.get_devices(),
                     "current_device": self.current_device,
                     "is_playing": self.is_playing,
-                    "playlists": self.playlists,
                     "shuffle_state": self.shuffle_state,
                     "repeat_state": self.repeat_state,
                 }
@@ -244,6 +296,10 @@ class SpotifyContext:
         )
 
     def close(self):
+        """Closes the spotify connection
+
+        If you see the spotipy docs it's done in the __del__ method
+        """
         del self.spotify
 
     async def refresh_spotify(self) -> None:
@@ -281,12 +337,15 @@ class SpotifyContext:
         if self.spotify is None:
             return
 
-        playlists = {}
-        for i in count(step=50):
-            pl = self.spotify.current_user_playlists(offset=i)
-            playlists.update({p.get("name"): p.get("uri") for p in pl.get("items")})
-            if pl.get("next") is None:
-                break
+        all_playlists = {}
+        counter = count(step=50)
+
+        while (
+            playlists := self.spotify.current_user_playlists(offset=next(counter))
+        ) and playlists.get("next") is None:
+            all_playlists.update(
+                {playlist["name"]: playlist["uri"] for playlist in playlists["items"]}
+            )
 
         if not playlists:
             return {0: "No Playlists"}
@@ -301,13 +360,9 @@ class SpotifyContext:
         Returns:
             dict: In the form of: {device name: device id, ...}
         """
-        if self.spotify is None:
-            return
-
-        devices = {
-            d.get("name"): d.get("id") for d in self.spotify.devices().get("devices")
+        return None if self.spotify is None else {
+            device["name"]: device["id"] for device in self.spotify.devices().get("devices")
         }
-        return devices
 
     async def play(self, data: dict, retries: int = 0) -> tuple | None:
         """Starts Playing a song or Playlist. If failure then it retries
@@ -341,8 +396,10 @@ class SpotifyContext:
                 self.spotify.start_playback(
                     device_id=device_id, context_uri=playlist_uri
                 )
+
             elif song_uri:
                 self.spotify.start_playback(device_id=device_id, uris=[song_uri])
+
             else:
                 self.spotify.start_playback(device_id=device_id)
 

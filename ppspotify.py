@@ -14,8 +14,9 @@ from json import loads as json_loads
 import sys
 from typing import Callable, cast
 
-import aiohttp
 from aiohttp import WSMsgType, web
+from aiohttp import WebSocketError, WSServerHandshakeError
+from aiohttp import web_exceptions
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
 
@@ -84,8 +85,8 @@ async def websocket_handler(request: web.Request) -> web.Response:
         request (web.Request)
     """
     websocket = web.WebSocketResponse()
-
     await websocket.prepare(request)
+
     app = cast(Server, request.app)
 
     async for payload in websocket:
@@ -105,11 +106,19 @@ async def websocket_handler(request: web.Request) -> web.Response:
                 try:
                     await handle_actions(app, data)
 
-                except ConnectionResetError:
-                    logger.info("Websocket Reset")
-                    app.clients.remove(websocket)
+                except WebSocketError as error:
+                    logger.exception(error)
 
-            case aiohttp.WSMsgType.ERROR:
+                except WSServerHandshakeError:
+                    logger.warning("Error during websocket handshake")
+
+                except ConnectionResetError:
+                    logger.warning("Websocket connection reset")
+
+                app.clients.remove(websocket)
+
+
+            case WSMsgType.ERROR:
                 logger.warning(f"ws connection closed with exception {websocket.exception()}")
                 app.clients.remove(websocket)
 
@@ -131,6 +140,7 @@ async def startup(request: web.Request) -> web.Response:  # pylint: disable=unus
         body=jinja_env.get_template("setup.html").render(),
         content_type="text/html",
     )
+
 
 async def handle_actions(app: Server, payload: list | tuple) -> None:
     """Performs the actions sent to the websocket service
@@ -195,6 +205,7 @@ async def handle_actions(app: Server, payload: list | tuple) -> None:
 
         await app.broadcast(response[0], **response[1])
 
+
 @web.middleware
 async def error_middleware(request: web.Request, handler: Callable) -> web.Response:
     """Handles Routing errors and serves custom error pages.
@@ -211,19 +222,20 @@ async def error_middleware(request: web.Request, handler: Callable) -> web.Respo
 
     except web.HTTPException as error:
         match error.status:
-            case 404:
+            case web_exceptions.HTTPNotFound:
                 return web.Response(text="Custom 404 message", status=404)
 
-            case status:
+            case _status:
                 logger.exception(error)
                 return web.Response(
                     text=(
                         "Oops, we encountered an error. Please check your URL."
                     ),
-                    status=status
+                    status=_status,
                 )
 
         logger.exception(error)
+
 
 async def cleanup_context(app: Server) -> None:
     """Runs before program shutdown to gracefully close any active connections
@@ -233,6 +245,7 @@ async def cleanup_context(app: Server) -> None:
     """
     app.context.close()
 
+
 def main() -> None:  # pylint: disable=missing-function-docstring
     app = Server(middlewares=[error_middleware])
     app.add_routes(routes)
@@ -241,9 +254,13 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     try:
         web.run_app(app, host=HOST, port=PORT)
 
+    except SystemExit:
+        logger.info("Server Shutdown Gracefully")
+
     except Exception as error: # pylint: disable=broad-except
         logger.exception(error)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
