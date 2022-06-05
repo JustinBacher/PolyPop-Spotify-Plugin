@@ -13,9 +13,9 @@ class Server(Application):
     """Custom wrapper for `aiohttp.web.Application"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.clients = set[WebSocketResponse]()
-        self.context = SpotifyContext()
-        self.tasks = list[asyncio.Task]()
+        self.clients: set[WebSocketResponse] = set()
+        self.context: SpotifyContext = SpotifyContext()
+        self.tasks: list[asyncio.Task] = []
 
     async def broadcast(self, payload: str | tuple) -> None:
         """Sends a message to all connected clients.
@@ -32,5 +32,13 @@ class Server(Application):
             "send_str" if isinstance(payload, str) else "send_json",
             payload
         )
+
         for client in self.clients:
             await to_send(client)
+
+    def close(self):
+        """Cleans up Server"""
+        for task in self.tasks:
+            task.cancel()
+
+        self.context.close()

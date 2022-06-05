@@ -260,6 +260,8 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     except Exception as error: # pylint: disable=broad-except
         logger.exception(error)
         sys.exit(1)
+    finally:
+        app.close()
 
 
 if __name__ == "__main__":

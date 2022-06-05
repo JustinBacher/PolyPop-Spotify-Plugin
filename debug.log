@@ -4,3 +4,6 @@
 2022-06-03 11:25:35.231 | DEBUG    | __main__:websocket_handler:96 - Action: WSMessage(type=<WSMsgType.TEXT: 1>, data='["login"]', extra='')
 2022-06-03 11:25:35.233 | DEBUG    | backend.utils:request_credentials_from_user:192 - http://localhost:38045
 2022-06-03 11:25:35.235 | DEBUG    | backend.utils:request_credentials_from_user:193 - http://localhost:38045/startup
+2022-06-03 12:58:24.594 | WARNING  | __main__:websocket_handler:116 - Client http://localhost:38045/ws connection closed
+2022-06-03 13:22:12.526 | WARNING  | __main__:websocket_handler:116 - Client http://localhost:38045/ws connection closed
+2022-06-03 13:22:12.528 | WARNING  | __main__:websocket_handler:116 - Client http://localhost:38045/ws connection closed

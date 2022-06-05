@@ -2,12 +2,10 @@ require "imagegroup"
 
 local repeat_states = { track="Song", context="Enabled", off="Disabled" }
 
-Instance.devices = {}
+Instance.devices = { }
 Instance.UserImageGroup = nil
 
 Instance.properties = properties({
-	{ name="client_id", type="Text" },
-	{ name="client_secret", type="Text" },
 	{ name="Settings", type="PropertyGroup", items={
 		{ name="Login", type="Action" },
 		{ name="Status", type="Text", value="Disconnected", ui={readonly=true} },
@@ -54,10 +52,6 @@ Instance.properties = properties({
 
 function Instance:onInit( )
     getOS( ):run("Spotify Service", getLocalFolder( ) .. "ppspotify.exe")
-	getUI( ):setUIProperty({
-		{ obj=self.properties:find("client_id"), visible=false },
-		{ obj=self.properties:find("client_secret"), visible=false },
-	} )
 	self.properties.Settings.Status = "Disconnected"
 	self.UserImageGroup = createImageGroup(self:getObjectKit( ), "UserImageGroup")
 	self:connect( )
@@ -76,14 +70,10 @@ function Instance:send_action(action, data)
 		return self:send(json.encode{ action, data })
 	end
 
-	self:send(json.encode{ action })
+	self:send(json.encode(action))
 end
 
 function Instance:connect( )
-	self:attemptConnection( )
-end
-
-function Instance:attemptConnection( )
 	local host = getNetwork( ):getHost("localhost")
 	self.webSocket = host:openWebSocket("ws://localhost:38045/ws")
 	self.webSocket:setAutoReconnect(true)
@@ -95,11 +85,11 @@ function Instance:attemptConnection( )
 end
 
 function Instance:_onWsConnected( )
-
+	-- todo:
 end
 
 function Instance:_onWsDisconnected( )
-
+	-- todo:
 end
 
 function Instance:onSpotifyConnect(data)
@@ -109,16 +99,14 @@ function Instance:onSpotifyConnect(data)
 	} )
 
 	self.properties.Settings.Status = "Connected as: " ..data.name
-	self.properties.client_id =data.client_id
-	self.properties.client_secret = data.client_secret
 	self.devices.all_devices = data.devices
 	self.properties.Settings.Device:find("PlaybackDevice"):setElements(self.devices.all_devices)
 
-	local tblImages = {}
+	local tblImages = { }
 	tblImages["Profile Image"] =data.user_image_url
 	self.UserImageGroup:setObjects(tblImages)
 
-	local playlists = {}
+	local playlists = { }
 	self.playlists = data.playlists
 
 	for k, _ in pairs(data.playlists) do
@@ -136,10 +124,11 @@ function Instance:onSpotifyConnect(data)
 	self.properties.Controls.Volume = data.volume
 
 	local device_in_devices = false
+
 	if not self.devices.current_device then
 		return
 	end
-	print(self.devices.current_device)
+
 	for _, v in pairs(self.devices.all_devices) do
 		if self.devices.current_device == v then
 			return end
@@ -237,7 +226,7 @@ function Instance:onVolumeUpdate( )
 end
 
 function Instance:onSongChanged(data)
-	local tblImages = {}
+	local tblImages = { }
 	tblImages["Profile Image"] = data.item.album.images[2].url
 	self.UserImageGroup:setObjects(tblImages)
 	self.properties.Alerts.onSongChange:raise( )
