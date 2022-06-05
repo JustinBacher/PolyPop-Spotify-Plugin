@@ -1,9 +1,87 @@
-2022-06-02 20:09:11.386 | DEBUG    | __main__:websocket_handler:96 - Action: WSMessage(type=<WSMsgType.TEXT: 1>, data='["login"]', extra='')
-2022-06-02 20:09:11.389 | DEBUG    | backend.utils:request_credentials_from_user:192 - http://localhost:38045
-2022-06-02 20:09:11.390 | DEBUG    | backend.utils:request_credentials_from_user:193 - http://localhost:38045/startup
-2022-06-03 11:25:35.231 | DEBUG    | __main__:websocket_handler:96 - Action: WSMessage(type=<WSMsgType.TEXT: 1>, data='["login"]', extra='')
-2022-06-03 11:25:35.233 | DEBUG    | backend.utils:request_credentials_from_user:192 - http://localhost:38045
-2022-06-03 11:25:35.235 | DEBUG    | backend.utils:request_credentials_from_user:193 - http://localhost:38045/startup
-2022-06-03 12:58:24.594 | WARNING  | __main__:websocket_handler:116 - Client http://localhost:38045/ws connection closed
-2022-06-03 13:22:12.526 | WARNING  | __main__:websocket_handler:116 - Client http://localhost:38045/ws connection closed
-2022-06-03 13:22:12.528 | WARNING  | __main__:websocket_handler:116 - Client http://localhost:38045/ws connection closed
+2022-06-04 19:22:16.278 | WARNING  | __main__:websocket_handler:116 - Client http://localhost:38045/ws connection closed
+2022-06-04 19:22:20.587 | DEBUG    | __main__:websocket_handler:96 - Action: WSMessage(type=<WSMsgType.TEXT: 1>, data='"login"', extra='')
+2022-06-04 19:22:20.588 | DEBUG    | __main__:websocket_handler:102 - failed to load message from websocket. Contents: WSMessage(type=<WSMsgType.TEXT: 1>, data='"login"', extra='')
+2022-06-04 19:26:02.862 | DEBUG    | __main__:websocket_handler:98 - Action: WSMessage(type=<WSMsgType.TEXT: 1>, data='"login"', extra='')
+2022-06-04 19:26:02.864 | INFO     | __main__:websocket_handler:100 - Data type sent from websocket connection: <class 'str'>
+2022-06-04 19:26:02.866 | DEBUG    | __main__:websocket_handler:106 - Failed to load message from websocket. Contents: WSMessage(type=<WSMsgType.TEXT: 1>, data='"login"', extra='')
+2022-06-04 19:28:17.591 | DEBUG    | __main__:websocket_handler:98 - Action: WSMessage(type=<WSMsgType.TEXT: 1>, data='"login"', extra='')
+2022-06-04 19:28:17.593 | INFO     | __main__:websocket_handler:100 - Data type sent from websocket connection: <class 'str'>
+2022-06-04 19:28:17.595 | DEBUG    | __main__:websocket_handler:106 - Failed to load message from websocket. Contents: WSMessage(type=<WSMsgType.TEXT: 1>, data='"login"', extra='')
+2022-06-04 19:30:55.436 | DEBUG    | __main__:websocket_handler:98 - Action: WSMessage(type=<WSMsgType.TEXT: 1>, data='["login"]', extra='')
+2022-06-04 19:30:55.438 | INFO     | __main__:websocket_handler:100 - Data type sent from websocket connection: <class 'list'>
+2022-06-04 19:30:55.440 | DEBUG    | backend.utils:request_credentials_from_user:234 - http://localhost:38045
+2022-06-04 19:30:55.441 | DEBUG    | backend.utils:request_credentials_from_user:235 - http://localhost:38045/startup
+2022-06-04 19:30:55.669 | ERROR    | __main__:error_middleware:229 - Not Found
+Traceback (most recent call last):
+
+  File "C:\Users\92jba\PolyPop\UIX\Sources\PolyPop-Spotify-Plugin\ppspotify.py", line 268, in <module>
+    main()
+    └ <function main at 0x0000026B884136D0>
+
+  File "C:\Users\92jba\PolyPop\UIX\Sources\PolyPop-Spotify-Plugin\ppspotify.py", line 255, in main
+    web.run_app(app, host=HOST, port=PORT)
+    │   │       │         │          └ 38045
+    │   │       │         └ 'localhost'
+    │   │       └ <Application 0x26b88421090>
+    │   └ <function run_app at 0x0000026B87FB2B00>
+    └ <module 'aiohttp.web' from 'C:\\Users\\92jba\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages\\aiohttp\\web.py'>
+
+  File "C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\site-packages\aiohttp\web.py", line 514, in run_app
+    loop.run_until_complete(main_task)
+    │    │                  └ <Task pending name='Task-1' coro=<_run_app() running at C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\site-packa...
+    │    └ <function BaseEventLoop.run_until_complete at 0x0000026B874D8040>
+    └ <ProactorEventLoop running=True closed=False debug=False>
+
+  File "C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\asyncio\base_events.py", line 633, in run_until_complete
+    self.run_forever()
+    │    └ <function ProactorEventLoop.run_forever at 0x0000026B87584A60>
+    └ <ProactorEventLoop running=True closed=False debug=False>
+
+  File "C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\asyncio\windows_events.py", line 321, in run_forever
+    super().run_forever()
+
+  File "C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\asyncio\base_events.py", line 600, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x0000026B874D9AB0>
+    └ <ProactorEventLoop running=True closed=False debug=False>
+
+  File "C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\asyncio\base_events.py", line 1896, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x0000026B8746D120>
+    └ <Handle <TaskStepMethWrapper object at 0x0000026B88472CB0>()>
+
+  File "C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\asyncio\events.py", line 80, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle <TaskStepMethWrapper object at 0x0000026B88472CB0>()>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle <TaskStepMethWrapper object at 0x0000026B88472CB0>()>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle <TaskStepMethWrapper object at 0x0000026B88472CB0>()>
+
+  File "C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\site-packages\aiohttp\web_protocol.py", line 435, in _handle_request
+    resp = await request_handler(request)
+                 │               └ <Request GET /favicon.ico >
+                 └ <bound method Application._handle of <Application 0x26b88421090>>
+
+  File "C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\site-packages\aiohttp\web_app.py", line 504, in _handle
+    resp = await handler(request)
+                 │       └ <Request GET /favicon.ico >
+                 └ functools.partial(<function _fix_request_current_app.<locals>.impl at 0x0000026B884139A0>, handler=functools.partial(<functio...
+
+  File "C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\site-packages\aiohttp\web_middlewares.py", line 117, in impl
+    return await handler(request)
+                 │       └ <Request GET /favicon.ico >
+                 └ functools.partial(<function error_middleware at 0x0000026B88413370>, handler=<bound method SystemRoute._handle of <SystemRout...
+
+> File "C:\Users\92jba\PolyPop\UIX\Sources\PolyPop-Spotify-Plugin\ppspotify.py", line 221, in error_middleware
+    return await handler(request)
+                 │       └ <Request GET /favicon.ico >
+                 └ <bound method SystemRoute._handle of <SystemRoute 404: Not Found>>
+
+  File "C:\Users\92jba\AppData\Local\Programs\Python\Python310\lib\site-packages\aiohttp\web_urldispatcher.py", line 931, in _handle
+    raise self._http_exception
+          │    └ <HTTPNotFound Not Found not prepared>
+          └ <SystemRoute 404: Not Found>
+
+aiohttp.web_exceptions.HTTPNotFound: Not Found

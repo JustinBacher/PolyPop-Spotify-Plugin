@@ -62,7 +62,10 @@ async def oauth_callback(request: web.Request) -> web.Response:
         return web.Response(body="Missing Credentials")
 
     app = cast(Server, request.app)
-    payload = await app.context.create_spotify()
+    payload = await app.context.create_spotify(
+        client_id=query["client_id"],
+        client_secret=query["client_secret"]
+    )
     spotify = app.context.spotify
 
     if payload is None or spotify is None:
@@ -86,36 +89,33 @@ async def websocket_handler(request: web.Request) -> web.Response:
     """
     websocket = web.WebSocketResponse()
     await websocket.prepare(request)
-
     app = cast(Server, request.app)
 
     async for payload in websocket:
         match payload.type:
             case WSMsgType.TEXT:
                 try:
-                    data = json_loads(payload.data)
                     logger.debug(f"Action: {payload}")
+                    data = json_loads(payload.data)
+                    logger.info(f"Data sent from websocket connection: {data}")
 
                     if not isinstance(data, (list, tuple)):
                         raise ValueError
 
                 except ValueError:
-                    logger.debug(f"failed to load message from websocket. Contents: {payload}")
+                    logger.warning(f"Failed to load message from websocket. Contents: {payload}")
                     continue
 
                 try:
                     await handle_actions(app, data)
-
-                except WebSocketError as error:
-                    logger.exception(error)
-
                 except WSServerHandshakeError:
                     logger.warning("Error during websocket handshake")
-
                 except ConnectionResetError:
                     logger.warning("Websocket connection reset")
-
-                app.clients.remove(websocket)
+                except WebSocketError as error:
+                    logger.exception(error)
+                finally:
+                    app.clients.remove(websocket)
 
 
             case WSMsgType.ERROR:
@@ -146,8 +146,8 @@ async def handle_actions(app: Server, payload: list | tuple) -> None:
     """Performs the actions sent to the websocket service
 
     Args:
-        app (Server)
-        data (dict)
+        app (Server): Currently running server. Should not change
+        data (dict): The data sent from the websocket service.
     """
     match payload:
 
@@ -196,7 +196,7 @@ async def handle_actions(app: Server, payload: list | tuple) -> None:
             sys.exit()
 
         case _:
-            response = None
+            return
 
     if response is not None:
         if len(response) == 1:

@@ -1,6 +1,6 @@
 <uix type="Source">
-  <category>Alert Objects</category>
-  <source_type>Web Alerts</source_type>
+  <add_menu_group>Web Alerts</add_menu_group>
+  <category>Web Alerts</category>
   <unique>true</unique>
   <name>Spotify</name>
 </uix>

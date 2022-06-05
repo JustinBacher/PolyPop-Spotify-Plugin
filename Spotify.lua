@@ -67,10 +67,10 @@ end
 
 function Instance:send_action(action, data)
 	if data then
-		return self:send(json.encode{ action, data })
+		return self:send(json.encode({ action, data }))
 	end
 
-	self:send(json.encode(action))
+	self:send(json.encode({ action }))
 end
 
 function Instance:connect( )
@@ -179,7 +179,7 @@ function Instance:onMessage(msg)
 end
 
 function Instance:Login( )
-	self.webSocket:send_action("login")
+	self:send_action("login")
 end
 
 

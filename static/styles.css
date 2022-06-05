@@ -43,13 +43,12 @@ span.small-p {
   font-size: 1rem;
 }
 
-div.col {
+.col {
   justify-content: right;
   align-items: end;
   text-align: right;
 }
 
-#align-left {
-  justify-content: left;
-  left: 0px;
+.col-6 {
+  text-align: start;
 }
