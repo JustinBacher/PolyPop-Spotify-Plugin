@@ -3,9 +3,9 @@
 build/
 */dist/
 *__pycache__
-__pycache__
 .*
 *.spec
 *.log
 .pylintrc
 .vscode
+poetry.lock

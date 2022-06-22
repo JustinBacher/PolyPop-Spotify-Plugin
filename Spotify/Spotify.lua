@@ -51,7 +51,7 @@ Instance.properties = properties({
 } )
 
 function Instance:onInit( )
-    getOS( ):run("Spotify Service", getLocalFolder( ) .. "ppspotify.exe")
+    --getOS( ):run("Spotify Service", getLocalFolder( ) .. "ppspotify.exe")
 	self.properties.Settings.Status = "Disconnected"
 	self.UserImageGroup = createImageGroup(self:getObjectKit( ), "UserImageGroup")
 	self:connect( )

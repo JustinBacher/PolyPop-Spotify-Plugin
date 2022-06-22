@@ -9,8 +9,7 @@ Todo:
 """
 
 
-# Importing json.loads like this is really so there's one less lookup performed per request.
-from json import loads as json_loads
+from json import loads as json_loads  # Importing like this so there's one less lookup per request
 import sys
 from typing import Callable, cast
 
@@ -20,23 +19,16 @@ from aiohttp import web_exceptions
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
 
-from backend.server import Server
-from backend.utils import DIRECTORY_PATH, HOST, PORT
+from .utils.server import Server
+from .utils.utils import DIRECTORY_PATH, HOST, PORT
 
 
 # Create Logger
-logger.add(
-    DIRECTORY_PATH.joinpath("debug.log"),
-    rotation="1 day",
-    retention="5 days"
-)
+logger.add(DIRECTORY_PATH.joinpath("debug.log"), rotation="1 day", retention="5 days")
 
 # Setup Routes and static file service
 routes = web.RouteTableDef()
-routes.static(
-    prefix="/static",
-    path=DIRECTORY_PATH.joinpath("static"),
-)
+routes.static(prefix="/static", path=DIRECTORY_PATH.joinpath("static"))
 
 # Create template renderer
 jinja_env = Environment(
@@ -63,8 +55,7 @@ async def oauth_callback(request: web.Request) -> web.Response:
 
     app = cast(Server, request.app)
     payload = await app.context.create_spotify(
-        client_id=query["client_id"],
-        client_secret=query["client_secret"]
+        client_id=query["client_id"], client_secret=query["client_secret"]
     )
     spotify = app.context.spotify
 
@@ -117,13 +108,17 @@ async def websocket_handler(request: web.Request) -> web.Response:
                 finally:
                     app.clients.remove(websocket)
 
-
             case WSMsgType.ERROR:
                 logger.warning(f"ws connection closed with exception {websocket.exception()}")
                 app.clients.remove(websocket)
 
     logger.warning(f"Client {request.url} connection closed")
     return web.Response(body="Websocket Closed")
+
+
+@routes.get("/")
+async def homepage(request: web.Request) -> web.Response:
+    return web.Response(body="PolyPop Spotify Plugin running")
 
 
 @routes.get("/startup")
@@ -228,13 +223,9 @@ async def error_middleware(request: web.Request, handler: Callable) -> web.Respo
             case _status:
                 logger.exception(error)
                 return web.Response(
-                    text=(
-                        "Oops, we encountered an error. Please check your URL."
-                    ),
+                    text=("Oops, we encountered an error. Please check your URL."),
                     status=_status,
                 )
-
-        logger.exception(error)
 
 
 async def cleanup_context(app: Server) -> None:
@@ -257,7 +248,7 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     except SystemExit:
         logger.info("Server Shutdown Gracefully")
 
-    except Exception as error: # pylint: disable=broad-except
+    except Exception as error:  # pylint: disable=broad-except
         logger.exception(error)
         sys.exit(1)
     finally:

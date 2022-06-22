@@ -27,7 +27,7 @@ SPOTIFY_SCOPE = (
 )
 
 # Path related Constants
-DIRECTORY_PATH = Path.home().joinpath("PolyPop/UIX/Sources/PolyPop-Spotify-Plugin")
+DIRECTORY_PATH = Path.home().joinpath("PolyPop/UIX/PolyPop-Spotify-Plugin")
 LOCAL_ARTWORK_PATH = DIRECTORY_PATH.joinpath("artwork.jpg")
 CREDENTIALS_PATH = DIRECTORY_PATH.joinpath(".creds")
 SPOTIFY_CACHE_DIR = DIRECTORY_PATH.joinpath(".cache")
@@ -48,6 +48,7 @@ async def exec_every_x_seconds(every: int, func: Awaitable) -> asyncio.Task:
         every (int): the number of seconds to wait in-between calls
         func (Callable): function to call
     """
+
     async def tasker():
         while True:
             await func
@@ -72,7 +73,6 @@ class CredentialsManager:
     client_id: str | None
     client_secret: str | None
 
-
     @classmethod
     def load_from_file(cls) -> "CredentialsManager":
         """Loads the users credentials from `SPOTIFY_CACHE_PATH`
@@ -84,12 +84,12 @@ class CredentialsManager:
         Returns:
             CredentialsManager
         """
+
         def handle_corrupt_data(data: io.TextIOBase) -> NoReturn:
             CREDENTIALS_PATH.unlink()
             raise FileNotFoundError(
                 f"Credentials file corrupt. File has been deleted.\nOld Contents:\n{data}"
             )
-
 
         if not CREDENTIALS_PATH.exists():
             raise FileNotFoundError(f'No Credentials File at "{CREDENTIALS_PATH}"')
@@ -105,16 +105,13 @@ class CredentialsManager:
             handle_corrupt_data(credentials_file)
 
         return cls(
-            client_id=credentials_data["client_id"],
-            client_secret=credentials_data["client_secret"]
+            client_id=credentials_data["client_id"], client_secret=credentials_data["client_secret"]
         )
-
 
     def save_to_file(self) -> None:
         """Saves credentials to file"""
         with open(CREDENTIALS_PATH, "w", encoding="utf-8") as creds_file:
             json_dump(asdict(self), creds_file)
-
 
     def auth_manager(self) -> SpotifyOAuth:
         """Generates an Oauth model
@@ -129,7 +126,6 @@ class CredentialsManager:
             scope=SPOTIFY_SCOPE,
             cache_handler=CacheFileHandler(SPOTIFY_CACHE_DIR),
         )
-
 
     def logout(self) -> None:
         """Clears the credentials and deletes the cached version of them
@@ -176,11 +172,7 @@ class SpotifyContext:
         "__local_media_folder",
     )
 
-
-    def __init__(
-        self,
-        credentials_manager: CredentialsManager | None = None
-    ) -> None:
+    def __init__(self, credentials_manager: CredentialsManager | None = None) -> None:
         self.credentials_manager = credentials_manager
 
         # I think this is the best way to basically type hint
@@ -194,7 +186,6 @@ class SpotifyContext:
         self.current_device: str | None
         self.current_track: dict | None
         self.__local_media_folder: str | None
-
 
     @property
     def local_media_folder(self) -> str | None:
@@ -241,9 +232,7 @@ class SpotifyContext:
             self.credentials_manager.logout()
 
     async def create_spotify(
-        self,
-        client_id: str | None = None,
-        client_secret: str | None = None
+        self, client_id: str | None = None, client_secret: str | None = None
     ) -> tuple | None:
         """Creates the Spotify Connection
 
@@ -259,9 +248,8 @@ class SpotifyContext:
                 return
 
         else:
-            credentials_manager  = CredentialsManager(
-                client_id=client_id,
-                client_secret=client_secret
+            credentials_manager = CredentialsManager(
+                client_id=client_id, client_secret=client_secret
             )
 
         self.spotify = spotify = Spotify(
@@ -278,8 +266,10 @@ class SpotifyContext:
         self.is_playing = current_playback.get("is_playing")
 
         return (
-            self, (
-                "spotify_connect", {
+            self,
+            (
+                "spotify_connect",
+                {
                     "name": user_profile.get("display_name"),
                     "user_image_url": "" if not profile_image else profile_image[0].get("url"),
                     "devices": self.get_devices(),
@@ -287,12 +277,13 @@ class SpotifyContext:
                     "is_playing": self.is_playing,
                     "shuffle_state": self.shuffle_state,
                     "repeat_state": self.repeat_state,
-                }
-            ), [
+                },
+            ),
+            [
                 await exec_every_x_seconds(1, self.check_now_playing()),
                 await exec_every_x_seconds(5, self.check_spotify_settings()),
                 await exec_every_x_seconds(1800, self.refresh_spotify()),
-            ]
+            ],
         )
 
     def close(self):
@@ -300,11 +291,11 @@ class SpotifyContext:
 
         If you see the spotipy docs it's done in the __del__ method
         """
-        del self.spotify
+        if hasattr(self, "spotify"):
+            del self.spotify
 
     async def refresh_spotify(self) -> None:
-        """Gets new access tokens, etc... and saves to cache file
-        """
+        """Gets new access tokens, etc... and saves to cache file"""
         self.spotify.auth_manager.get_access_token()  # type: ignore [Spotipy didn't do type hints]
 
     def update_settings(self, data: dict) -> None:
@@ -360,9 +351,11 @@ class SpotifyContext:
         Returns:
             dict: In the form of: {device name: device id, ...}
         """
-        return None if self.spotify is None else {
-            device["name"]: device["id"] for device in self.spotify.devices().get("devices")
-        }
+        return (
+            None
+            if self.spotify is None
+            else {device["name"]: device["id"] for device in self.spotify.devices().get("devices")}
+        )
 
     async def play(self, data: dict, retries: int = 0) -> tuple | None:
         """Starts Playing a song or Playlist. If failure then it retries
@@ -393,9 +386,7 @@ class SpotifyContext:
 
         try:
             if playlist_uri:
-                self.spotify.start_playback(
-                    device_id=device_id, context_uri=playlist_uri
-                )
+                self.spotify.start_playback(device_id=device_id, context_uri=playlist_uri)
 
             elif song_uri:
                 self.spotify.start_playback(device_id=device_id, uris=[song_uri])
@@ -415,13 +406,7 @@ class SpotifyContext:
                     data["device_name"] = environ["COMPUTERNAME"]
                     return await self.play(data, 2)
 
-            return (
-                "error", {
-                    "command": "play",
-                    "msg": error.msg,
-                    "reason": error.reason
-                }
-            )
+            return ("error", {"command": "play", "msg": error.msg, "reason": error.reason})
 
     def repeat(self, data: dict) -> None:
         """Calls `self.spotify.repeat` with the re-munged state
@@ -440,9 +425,8 @@ class SpotifyContext:
             return
 
         return (
-            "devices", {
-                "devices": [] if (devices := self.get_devices()) is None else list(devices)
-            }
+            "devices",
+            {"devices": [] if (devices := self.get_devices()) is None else list(devices)},
         )
 
     async def refresh_playlists(self) -> tuple | None:
@@ -533,12 +517,10 @@ class SpotifyContext:
             self.is_playing = is_playing
 
             if is_playing is None:
-                return "playing_stopped",
+                return ("playing_stopped",)
 
             if track["item"]["is_local"] and (
-                local_artwork := self.get_local_artwork(
-                    track["item"]["uri"].split(":")[-2]
-                )
+                local_artwork := self.get_local_artwork(track["item"]["uri"].split(":")[-2])
             ):
                 track["item"]["album"]["images"] = [{"url": f"file/{local_artwork}"}]
             logger.debug(track)
@@ -548,9 +530,7 @@ class SpotifyContext:
             return
 
         if track["item"]["is_local"]:
-            if local_artwork := self.get_local_artwork(
-                track["item"]["uri"].split(":")[-2]
-            ):
+            if local_artwork := self.get_local_artwork(track["item"]["uri"].split(":")[-2]):
                 track["item"]["album"]["images"] = [
                     {"url": local_artwork.as_uri().replace("/", "\\")}
                 ]
