@@ -48,14 +48,15 @@ async def oauth_callback(request: web.Request) -> web.Response:
         web.Response
     """
     query = request.url.query
+    print(query)
 
-    if not {"client_id", "client_secret"}.issubset(query):
+    if not {"client-id", "client-secret"}.issubset(query):
         # If somehow the user didn't supply the Client ID and Secret then error out
         return web.Response(body="Missing Credentials")
 
     app = cast(Server, request.app)
     payload = await app.context.create_spotify(
-        client_id=query["client_id"], client_secret=query["client_secret"]
+        client_id=query["client-id"], client_secret=query["client-secret"]
     )
     spotify = app.context.spotify
 
@@ -81,6 +82,10 @@ async def websocket_handler(request: web.Request) -> web.Response:
     websocket = web.WebSocketResponse()
     await websocket.prepare(request)
     app = cast(Server, request.app)
+    app.clients.add(websocket)
+    logger.info(f"Websocket connection established.")
+
+    await app.context.create_spotify()
 
     async for payload in websocket:
         match payload.type:
@@ -198,7 +203,7 @@ async def handle_actions(app: Server, payload: list | tuple) -> None:
             await app.broadcast(response[0])
             return
 
-        await app.broadcast(response[0], **response[1])
+        await app.broadcast(response)
 
 
 @web.middleware

@@ -22,8 +22,8 @@ from mutagen import File as SongLookupFile
 from yarl import URL
 
 SPOTIFY_SCOPE = (
-    "user-modify-playback-state,user-read-currently-playing"
-    "user-read-playback-state,user-library-read"
+    "user-read-playback-state,user-library-read,user-modify-playback-state,"
+    "user-read-currently-playing,playlist-read-private"
 )
 
 # Path related Constants
@@ -37,8 +37,9 @@ COVER_IMAGE_APIC_NAMES = ["APIC:", "data", "cov"]
 REPEAT_STATES = {"Song": "track", "Enabled": "context", "Disabled": "off"}
 
 # URL constants
-HOST, PORT = "localhost", 38045
+HOST, PORT, SPOTIFY_PORT = "localhost", 38045, 38042
 LOCALHOST_URL = URL(f"http://{HOST}:{PORT}")
+SPOTIFY_LOCALHOST_URL = URL(f"http://{HOST}:{SPOTIFY_PORT}")
 
 
 async def exec_every_x_seconds(every: int, func: Awaitable) -> asyncio.Task:
@@ -101,7 +102,7 @@ class CredentialsManager:
                 credentials_file.seek(0)
                 handle_corrupt_data(credentials_file)
 
-        if {"client_id", "client_secret"} > credentials_data:
+        if {"client_id", "client_secret"}.issubset(credentials_data):
             handle_corrupt_data(credentials_file)
 
         return cls(
@@ -113,6 +114,7 @@ class CredentialsManager:
         with open(CREDENTIALS_PATH, "w", encoding="utf-8") as creds_file:
             json_dump(asdict(self), creds_file)
 
+    @property
     def auth_manager(self) -> SpotifyOAuth:
         """Generates an Oauth model
 
@@ -122,7 +124,7 @@ class CredentialsManager:
         return SpotifyOAuth(
             client_id=self.client_id,
             client_secret=self.client_secret,
-            redirect_uri=LOCALHOST_URL.with_path("/oauth_callback"),
+            redirect_uri=SPOTIFY_LOCALHOST_URL.human_repr(),
             scope=SPOTIFY_SCOPE,
             cache_handler=CacheFileHandler(SPOTIFY_CACHE_DIR),
         )
@@ -142,7 +144,7 @@ class CredentialsManager:
 
 
 class SpotifyContext:
-    """Wrapper for the connectionn to Spotify
+    """Wrapper for the connection to Spotify
 
     Contains the active spotify connection and it's
     current states and settings
@@ -157,7 +159,6 @@ class SpotifyContext:
         current_device: str | None = None
         current_track: dict | None = None
         __local_media_folder: str | None = None
-
     """
 
     __slots__ = (
@@ -222,8 +223,7 @@ class SpotifyContext:
         if delete_old:
             CREDENTIALS_PATH.unlink(True)
 
-        logger.debug(LOCALHOST_URL)
-        logger.debug(LOCALHOST_URL.with_path("/startup"))
+        logger.debug(f"Opening: {LOCALHOST_URL.with_path('/startup')}")
         webbrowser.open(LOCALHOST_URL.with_path("/startup").human_repr())
 
     def logout(self) -> None:
@@ -241,20 +241,24 @@ class SpotifyContext:
         """
         if client_id is None and client_secret is None:
             try:
-                credentials_manager = CredentialsManager.load_from_file()
+                self.credentials_manager = CredentialsManager.load_from_file()
 
             except FileNotFoundError as error:
                 logger.debug(error.args)
                 return
 
         else:
-            credentials_manager = CredentialsManager(
+            self.credentials_manager = CredentialsManager(
                 client_id=client_id, client_secret=client_secret
             )
 
-        self.spotify = spotify = Spotify(
-            client_credentials_manager=credentials_manager.auth_manager
-        )
+        if (
+            spotify := Spotify(client_credentials_manager=self.credentials_manager.auth_manager)
+        ) is None:
+            raise RuntimeError("Incorrect credentials")
+
+        self.spotify = spotify
+        self.credentials_manager.save_to_file()
 
         user_profile = spotify.me()
         current_playback = spotify.current_playback() or {}
@@ -266,7 +270,6 @@ class SpotifyContext:
         self.is_playing = current_playback.get("is_playing")
 
         return (
-            self,
             (
                 "spotify_connect",
                 {
@@ -395,8 +398,6 @@ class SpotifyContext:
                 self.spotify.start_playback(device_id=device_id)
 
         except SpotifyException as error:
-            logger.exception(error)
-
             match retries:
                 case 0:
                     data["device_name"] = gethostname()
@@ -502,10 +503,12 @@ class SpotifyContext:
 
     async def check_now_playing(self) -> tuple | None:
         """Checks for current Spotify state and updates PolyPop in case of changes"""
-        if self.spotify is None:
+        if (spotify := self.spotify) is None:
             return
 
-        track = self.spotify.currently_playing()
+        track = spotify.currently_playing()
+        if track is None:
+            return
         track_id = track.get("item", {}).get("id")
         is_playing = track.get("is_playing", False)
 
