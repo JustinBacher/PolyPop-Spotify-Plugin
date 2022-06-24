@@ -98,7 +98,7 @@ function Instance:onSpotifyConnect(data)
 		{ obj=self.properties:find("Alerts"), expand=true }
 	} )
 
-	self.properties.Settings.Status = "Connected as: " ..data.name
+	self.properties.Settings.Status = "Connected as: " .. data.name
 	self.devices.all_devices = data.devices
 	self.properties.Settings.Device:find("PlaybackDevice"):setElements(self.devices.all_devices)
 

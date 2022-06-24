@@ -21,8 +21,6 @@ from loguru import logger
 from mutagen import File as SongLookupFile
 from yarl import URL
 
-from server import Server
-
 SPOTIFY_SCOPE = (
     "user-read-playback-state,user-library-read,user-modify-playback-state,"
     "user-read-currently-playing,playlist-read-private"
@@ -91,7 +89,7 @@ class CredentialsManager:
         def handle_corrupt_data(data: io.TextIOBase) -> NoReturn:
             CREDENTIALS_PATH.unlink()
             raise FileNotFoundError(
-                f"Credentials file corrupt. File has been deleted.\nOld Contents:\n{data}"
+                f"Credentials file corrupt. File has been deleted.\nOld Contents:\n{data.read()}"
             )
 
         if not CREDENTIALS_PATH.exists():
@@ -234,8 +232,8 @@ class SpotifyContext:
             self.credentials_manager.logout()
 
     async def create_spotify(
-        self, app: Server, client_id: str | None = None, client_secret: str | None = None
-    ) -> tuple | None:
+        self, client_id: str | None = None, client_secret: str | None = None
+    ) -> tuple[str, dict] | None:
         """Creates the Spotify Connection
 
         Returns:
@@ -271,7 +269,7 @@ class SpotifyContext:
         self.repeat_state = current_playback.get("repeat_state")
         self.is_playing = current_playback.get("is_playing")
 
-        await app.broadcast(
+        return (
             "spotify_connect",
             {
                 "name": user_profile.get("display_name"),
@@ -434,24 +432,22 @@ class SpotifyContext:
 
     async def check_spotify_settings(self) -> tuple | None:
         """Checks for current spotify settings.
-        If something changesthen broadcasts the changes"""
+        If something changes then broadcasts the changes"""
         if self.spotify is None:
             return
 
         info = self.spotify.current_playback().get
         new_shuffle = info("shuffle_state")
         new_repeat = info("repeat_state")
-        ret = {}
+        states = {}
 
         if self.shuffle_state != new_shuffle:
-            ret["shuffle_state"] = new_shuffle
-            self.shuffle_state = new_shuffle
+            states["shuffle_state"] = self.shuffle_state = new_shuffle
         if self.repeat_state != new_repeat:
-            ret["repeat_state"] = new_repeat
-            self.repeat_state = new_repeat
+            states["repeat_state"] = self.repeat_state = new_repeat
 
-        if ret:
-            return "update", ret
+        if states:
+            return "update", states
 
     def get_local_artwork(self, name: str) -> Path | None:
         """Looks in the local directory recursively to find a matching
@@ -496,7 +492,7 @@ class SpotifyContext:
 
         return LOCAL_ARTWORK_PATH
 
-    async def check_now_playing(self) -> tuple | None:
+    async def check_now_playing(self) -> str | tuple | None:
         """Checks for current Spotify state and updates PolyPop in case of changes"""
         if (spotify := self.spotify) is None:
             return
@@ -515,7 +511,7 @@ class SpotifyContext:
             self.is_playing = is_playing
 
             if is_playing is None:
-                return ("playing_stopped",)
+                return "playing_stopped"
 
             if track["item"]["is_local"] and (
                 local_artwork := self.get_local_artwork(track["item"]["uri"].split(":")[-2])

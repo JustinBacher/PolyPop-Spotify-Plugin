@@ -19,6 +19,7 @@ from aiohttp import WebSocketError, WSServerHandshakeError
 from aiohttp import web_exceptions
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
+from spotipy import Spotify
 
 from .utils.server import Server
 from .utils.utils import DIRECTORY_PATH, HOST, PORT
@@ -57,12 +58,15 @@ async def oauth_callback(request: web.Request) -> web.Response:
 
     app = cast(Server, request.app)
     payload = await app.context.create_spotify(
-        app, client_id=query["client-id"], client_secret=query["client-secret"]
+        client_id=query["client-id"], client_secret=query["client-secret"]
     )
-    spotify = app.context.spotify
+
+    spotify = cast(Spotify, getattr(app.context, "spotify"))
 
     if payload is None or spotify is None:
         return web.Response(body="Authorization Error")
+
+    await app.broadcast(*payload)
 
     return web.Response(
         body=jinja_env.get_template("logged_in.html").render(
@@ -86,7 +90,10 @@ async def websocket_handler(request: web.Request) -> web.Response:
     app.clients.add(websocket)
     logger.info(f"Websocket connection established.")
 
-    await app.context.create_spotify(app)
+    payload = await app.context.create_spotify()
+
+    if payload is not None:
+        await app.broadcast(*payload)
 
     async for payload in websocket:
         match payload.type:
@@ -200,10 +207,6 @@ async def handle_actions(app: Server, payload: list | tuple) -> None:
             return
 
     if response is not None:
-        if len(response) == 1:
-            await app.broadcast(response[0])
-            return
-
         await app.broadcast(*response)
 
 
