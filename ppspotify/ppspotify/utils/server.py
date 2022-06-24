@@ -3,6 +3,7 @@
 import asyncio
 
 from operator import methodcaller
+from typing import Any
 
 from aiohttp.web import Application, WebSocketResponse
 
@@ -18,7 +19,7 @@ class Server(Application):
         self.context: SpotifyContext = SpotifyContext()
         self.tasks: list[asyncio.Task] = []
 
-    async def broadcast(self, payload: str | tuple | dict) -> None:
+    async def broadcast(self, action: str, data: dict | None = None) -> None:
         """Sends a message to all connected clients.
         There should only be one client connected and it should be PolyPop,
         but just in case PolyPop retries connection and this client keeps an
@@ -29,10 +30,11 @@ class Server(Application):
             action (str): The action to perform in PolyPop
             data (dict, optional): Data related to the action
         """
-        to_send = methodcaller("send_str" if isinstance(payload, str) else "send_json", payload)
-
         for client in self.clients:
-            await to_send(client)
+            if data:
+                await client.send_json({"action": action, "data": data})
+            else:
+                await client.send_json({"action": action})
 
     def close(self):
         """Cleans up Server"""

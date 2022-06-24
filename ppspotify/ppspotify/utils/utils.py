@@ -21,6 +21,8 @@ from loguru import logger
 from mutagen import File as SongLookupFile
 from yarl import URL
 
+from server import Server
+
 SPOTIFY_SCOPE = (
     "user-read-playback-state,user-library-read,user-modify-playback-state,"
     "user-read-currently-playing,playlist-read-private"
@@ -232,7 +234,7 @@ class SpotifyContext:
             self.credentials_manager.logout()
 
     async def create_spotify(
-        self, client_id: str | None = None, client_secret: str | None = None
+        self, app: Server, client_id: str | None = None, client_secret: str | None = None
     ) -> tuple | None:
         """Creates the Spotify Connection
 
@@ -269,24 +271,17 @@ class SpotifyContext:
         self.repeat_state = current_playback.get("repeat_state")
         self.is_playing = current_playback.get("is_playing")
 
-        return (
-            (
-                "spotify_connect",
-                {
-                    "name": user_profile.get("display_name"),
-                    "user_image_url": "" if not profile_image else profile_image[0].get("url"),
-                    "devices": self.get_devices(),
-                    "current_device": self.current_device,
-                    "is_playing": self.is_playing,
-                    "shuffle_state": self.shuffle_state,
-                    "repeat_state": self.repeat_state,
-                },
-            ),
-            [
-                await exec_every_x_seconds(1, self.check_now_playing()),
-                await exec_every_x_seconds(5, self.check_spotify_settings()),
-                await exec_every_x_seconds(1800, self.refresh_spotify()),
-            ],
+        await app.broadcast(
+            "spotify_connect",
+            {
+                "name": user_profile.get("display_name"),
+                "user_image_url": "" if not profile_image else profile_image[0].get("url"),
+                "devices": self.get_devices(),
+                "current_device": self.current_device,
+                "is_playing": self.is_playing,
+                "shuffle_state": self.shuffle_state,
+                "repeat_state": self.repeat_state,
+            },
         )
 
     def close(self):
@@ -407,7 +402,7 @@ class SpotifyContext:
                     data["device_name"] = environ["COMPUTERNAME"]
                     return await self.play(data, 2)
 
-            return ("error", {"command": "play", "msg": error.msg, "reason": error.reason})
+            return "error", {"command": "play", "msg": error.msg, "reason": error.reason}
 
     def repeat(self, data: dict) -> None:
         """Calls `self.spotify.repeat` with the re-munged state

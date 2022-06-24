@@ -12,6 +12,7 @@ Todo:
 from json import loads as json_loads  # Importing like this so there's one less lookup per request
 import sys
 from typing import Callable, cast
+from urllib import request
 
 from aiohttp import WSMsgType, web
 from aiohttp import WebSocketError, WSServerHandshakeError
@@ -56,7 +57,7 @@ async def oauth_callback(request: web.Request) -> web.Response:
 
     app = cast(Server, request.app)
     payload = await app.context.create_spotify(
-        client_id=query["client-id"], client_secret=query["client-secret"]
+        app, client_id=query["client-id"], client_secret=query["client-secret"]
     )
     spotify = app.context.spotify
 
@@ -85,7 +86,7 @@ async def websocket_handler(request: web.Request) -> web.Response:
     app.clients.add(websocket)
     logger.info(f"Websocket connection established.")
 
-    await app.context.create_spotify()
+    await app.context.create_spotify(app)
 
     async for payload in websocket:
         match payload.type:
@@ -203,7 +204,7 @@ async def handle_actions(app: Server, payload: list | tuple) -> None:
             await app.broadcast(response[0])
             return
 
-        await app.broadcast(response)
+        await app.broadcast(*response)
 
 
 @web.middleware
