@@ -58,9 +58,7 @@ async def exec_every_x_seconds(every: int, func: Awaitable) -> asyncio.Task:
     return asyncio.create_task(tasker())
 
 
-@dataclass(
-    repr=False,
-)
+@dataclass
 class CredentialsManager:
     """Slightly shadow's Spotipy's auth manager due to it having issues
     handling cache and token refreshing
@@ -75,7 +73,7 @@ class CredentialsManager:
     client_secret: str | None
 
     @classmethod
-    def load_from_file(cls) -> "CredentialsManager":
+    def load_from_file(cls: type["CredentialsManager"]) -> "CredentialsManager":
         """Loads the users credentials from `SPOTIFY_CACHE_PATH`
 
         Raises:
@@ -102,12 +100,13 @@ class CredentialsManager:
                 credentials_file.seek(0)
                 handle_corrupt_data(credentials_file)
 
-        if {"client_id", "client_secret"}.issubset(credentials_data):
+        client_id = credentials_data.get("client_id")
+        client_secret = credentials_data.get("client_secret")
+
+        if client_id is None or client_secret is None:
             handle_corrupt_data(credentials_file)
 
-        return cls(
-            client_id=credentials_data["client_id"], client_secret=credentials_data["client_secret"]
-        )
+        return cls(client_id, client_secret)
 
     def save_to_file(self) -> None:
         """Saves credentials to file"""
@@ -279,6 +278,7 @@ class SpotifyContext:
                 "is_playing": self.is_playing,
                 "shuffle_state": self.shuffle_state,
                 "repeat_state": self.repeat_state,
+                "playlists": self.get_all_playlists(),
             },
         )
 
