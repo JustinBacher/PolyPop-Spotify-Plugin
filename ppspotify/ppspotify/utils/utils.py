@@ -21,6 +21,8 @@ from loguru import logger
 from mutagen import File as SongLookupFile
 from yarl import URL
 
+from .server import Server
+
 SPOTIFY_SCOPE = (
     "user-read-playback-state,user-library-read,user-modify-playback-state,"
     "user-read-currently-playing,playlist-read-private"
@@ -174,10 +176,6 @@ class SpotifyContext:
 
     def __init__(self, credentials_manager: CredentialsManager | None = None) -> None:
         self.credentials_manager = credentials_manager
-
-        # I think this is the best way to basically type hint
-        # without setting values. And without making them global
-        # to the class itself
         self.spotify: Spotify | None
         self.shuffle_state: bool | None
         self.repeat_state: bool | None
@@ -231,7 +229,7 @@ class SpotifyContext:
             self.credentials_manager.logout()
 
     async def create_spotify(
-        self, client_id: str | None = None, client_secret: str | None = None
+        self, app: Server, client_id: str | None = None, client_secret: str | None = None
     ) -> tuple[str, dict] | None:
         """Creates the Spotify Connection
 
@@ -267,6 +265,9 @@ class SpotifyContext:
         self.shuffle_state = current_playback.get("shuffle_state")
         self.repeat_state = current_playback.get("repeat_state")
         self.is_playing = current_playback.get("is_playing")
+
+        await exec_every_x_seconds(1, self.check_now_playing(app))
+        await exec_every_x_seconds(1, self.check_spotify_settings(app))
 
         return (
             "spotify_connect",
@@ -312,7 +313,7 @@ class SpotifyContext:
             self.repeat({"state": new_repeat})
             self.repeat_state = new_repeat
 
-    def get_all_playlists(self) -> dict | None:
+    def get_all_playlists(self) -> dict[str, str] | None:
         """Gets all of the current users playlists
 
         Args:
@@ -335,7 +336,7 @@ class SpotifyContext:
             )
 
         if not playlists:
-            return {0: "No Playlists"}
+            return {"0": "No Playlists"}
         return playlists
 
     def get_devices(self) -> dict | None:
@@ -430,15 +431,15 @@ class SpotifyContext:
 
         return "playlists", {"playlists": self.get_all_playlists()}
 
-    async def check_spotify_settings(self) -> tuple | None:
+    async def check_spotify_settings(self, app: Server) -> None:
         """Checks for current spotify settings.
         If something changes then broadcasts the changes"""
-        if self.spotify is None:
+        if (spotify := self.spotify) is None:
             return
 
-        info = self.spotify.current_playback().get
-        new_shuffle = info("shuffle_state")
-        new_repeat = info("repeat_state")
+        get_info = spotify.current_playback().get
+        new_shuffle = get_info("shuffle_state")
+        new_repeat = get_info("repeat_state")
         states = {}
 
         if self.shuffle_state != new_shuffle:
@@ -447,7 +448,7 @@ class SpotifyContext:
             states["repeat_state"] = self.repeat_state = new_repeat
 
         if states:
-            return "update", states
+            await app.broadcast("update", states)
 
     def get_local_artwork(self, name: str) -> Path | None:
         """Looks in the local directory recursively to find a matching
@@ -492,7 +493,7 @@ class SpotifyContext:
 
         return LOCAL_ARTWORK_PATH
 
-    async def check_now_playing(self) -> str | tuple | None:
+    async def check_now_playing(self, app: Server) -> None:
         """Checks for current Spotify state and updates PolyPop in case of changes"""
         if (spotify := self.spotify) is None:
             return
@@ -511,14 +512,14 @@ class SpotifyContext:
             self.is_playing = is_playing
 
             if is_playing is None:
-                return "playing_stopped"
+                await app.broadcast("playing_stopped")
 
             if track["item"]["is_local"] and (
                 local_artwork := self.get_local_artwork(track["item"]["uri"].split(":")[-2])
             ):
                 track["item"]["album"]["images"] = [{"url": f"file/{local_artwork}"}]
             logger.debug(track)
-            return "started_playing", track
+            await app.broadcast("started_playing", track)
 
         if self.current_track == track_id:
             return
@@ -528,4 +529,4 @@ class SpotifyContext:
                 track["item"]["album"]["images"] = [
                     {"url": local_artwork.as_uri().replace("/", "\\")}
                 ]
-        return "song_changed", track
+        await app.broadcast("song_changed", track)

@@ -19,7 +19,7 @@ class Server(Application):
         self.context: SpotifyContext = SpotifyContext()
         self.tasks: list[asyncio.Task] = []
 
-    async def broadcast(self, action: str, data: dict | None = None) -> None:
+    async def broadcast(self, action: str, data: dict[str, Any] | None = None) -> None:
         """Sends a message to all connected clients.
         There should only be one client connected and it should be PolyPop,
         but just in case PolyPop retries connection and this client keeps an

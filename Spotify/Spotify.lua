@@ -89,7 +89,7 @@ function Instance:_onWsConnected( )
 end
 
 function Instance:_onWsDisconnected( )
-	-- todo:
+	-- TODO:
 end
 
 function Instance:onSpotifyConnect(data)
@@ -121,9 +121,6 @@ function Instance:onSpotifyConnect(data)
 
 	self.properties.Controls.Modes.Shuffle = data.shuffle_state
 	self.properties.Controls.Modes:find("Repeat").value = repeat_states[data.repeat_state]
-	self.properties.Controls.Volume = data.volume
-
-	local device_in_devices = false
 
 	if not self.devices.current_device then
 		return
@@ -132,7 +129,6 @@ function Instance:onSpotifyConnect(data)
 	for _, v in pairs(self.devices.all_devices) do
 		if self.devices.current_device == v then
 			return end
-		device_in_devices = true
 		self.properties.Settings.Device:find("PlaybackDevice"):setValue(v)
 	end
 
@@ -141,6 +137,8 @@ end
 function Instance:onMessage(msg)
 	local payload = json.decode(msg)
 	local action, data = payload.action, payload.data
+
+	print('"' .. tostring(action) .. '", ' .. tostring(data))
 
 	local case = {
 		["spotify_connect"] = function( )

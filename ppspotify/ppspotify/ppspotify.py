@@ -11,6 +11,7 @@ Todo:
 
 from json import loads as json_loads  # Importing like this so there's one less lookup per request
 import sys
+from turtle import back
 from typing import Callable, cast
 from urllib import request
 
@@ -58,10 +59,10 @@ async def oauth_callback(request: web.Request) -> web.Response:
 
     app = cast(Server, request.app)
     payload = await app.context.create_spotify(
-        client_id=query["client-id"], client_secret=query["client-secret"]
+        app, client_id=query["client-id"], client_secret=query["client-secret"]
     )
 
-    spotify = cast(Spotify, getattr(app.context, "spotify"))
+    spotify = cast(Spotify, app.context.spotify)
 
     if payload is None or spotify is None:
         return web.Response(body="Authorization Error")
@@ -90,7 +91,7 @@ async def websocket_handler(request: web.Request) -> web.Response:
     app.clients.add(websocket)
     logger.info(f"Websocket connection established.")
 
-    payload = await app.context.create_spotify()
+    payload = await app.context.create_spotify(app)
 
     if payload is not None:
         await app.broadcast(*payload)
@@ -98,17 +99,16 @@ async def websocket_handler(request: web.Request) -> web.Response:
     async for payload in websocket:
         match payload.type:
             case WSMsgType.TEXT:
+                logger.debug(f"Action: {payload}")
                 try:
-                    logger.debug(f"Action: {payload}")
                     data = json_loads(payload.data)
-                    logger.info(f"Data sent from websocket connection: {data}")
-
                     if not isinstance(data, (list, tuple)):
                         raise ValueError
-
                 except ValueError:
                     logger.warning(f"Failed to load message from websocket. Contents: {payload}")
                     continue
+
+                logger.info(f"Data sent from websocket connection: {data}")
 
                 try:
                     await handle_actions(app, data)
@@ -204,6 +204,7 @@ async def handle_actions(app: Server, payload: list | tuple) -> None:
             sys.exit()
 
         case _:
+            logger.debug("Websocket received unknown information: {_}")
             return
 
     if response is not None:
