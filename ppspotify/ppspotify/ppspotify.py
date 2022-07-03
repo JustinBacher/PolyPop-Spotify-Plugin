@@ -113,7 +113,7 @@ async def websocket_handler(request: web.Request) -> web.Response:
                 try:
                     await handle_actions(app, data)
                 except WSServerHandshakeError:
-                    logger.warning("Error during websocket handshake")
+                    logger.warning("Error connecting to websocket")
                 except ConnectionResetError:
                     logger.warning("Websocket connection reset")
                 except WebSocketError as error:
