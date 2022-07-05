@@ -5,7 +5,7 @@
 
 # Welcome to my Spotify plugin for PolyPop!
 
-## :🚀Installation
+## 🚀Installation
 
 - Close PolyPop
 - Goto the [latest releast](https://github.com/Jabbey92/PolyPop-Spotify-Plugin/releases/latest)
