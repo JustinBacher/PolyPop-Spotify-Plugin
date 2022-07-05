@@ -13,7 +13,7 @@
 4. Run the installer
 5. Open PolyPop
 
-## Usage
+## 💻Usage
 
 - Add the plugin to your library *(left panel)* by clicking the ➕ button and selecting **Spotify**.
 - You will need to connect to a Spotify account before you can use this plugin.
