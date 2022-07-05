@@ -259,7 +259,7 @@ class SpotifyContext:
         current_playback = spotify.current_playback() or {}
         profile_image = user_profile.get("images")
         self.current_device = current_playback.get("device")
-        self.current_track = current_playback.get("item")
+        self.current_track = current_playback.get("item", {}).get("id")
         self.shuffle_state = current_playback.get("shuffle_state")
         self.repeat_state = current_playback.get("repeat_state")
         self.is_playing = current_playback.get("is_playing")
@@ -435,7 +435,10 @@ class SpotifyContext:
         if (spotify := self.spotify) is None:
             return
 
-        get_info = spotify.current_playback().get
+        if (info := spotify.current_playback()) is None:
+            return
+
+        get_info = info.get
         new_shuffle = get_info("shuffle_state")
         new_repeat = get_info("repeat_state")
         states = {}
@@ -497,8 +500,6 @@ class SpotifyContext:
             return
 
         track = spotify.currently_playing()
-        if track is None:
-            return
         track_id = track.get("item", {}).get("id")
         is_playing = track.get("is_playing", False)
 
@@ -516,7 +517,6 @@ class SpotifyContext:
                 local_artwork := self.get_local_artwork(track["item"]["uri"].split(":")[-2])
             ):
                 track["item"]["album"]["images"] = [{"url": f"file/{local_artwork}"}]
-            logger.debug(track)
             await app.broadcast("started_playing", track)
 
         if self.current_track == track_id:
@@ -528,3 +528,5 @@ class SpotifyContext:
                     {"url": local_artwork.as_uri().replace("/", "\\")}
                 ]
         await app.broadcast("song_changed", track)
+
+        self.current_track = track_id

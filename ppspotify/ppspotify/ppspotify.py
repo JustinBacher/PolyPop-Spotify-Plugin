@@ -99,7 +99,6 @@ async def websocket_handler(request: web.Request) -> web.Response:
     async for payload in websocket:
         match payload.type:
             case WSMsgType.TEXT:
-                logger.debug(f"Action: {payload}")
                 try:
                     data = json_loads(payload.data)
                     if not isinstance(data, (list, tuple)):

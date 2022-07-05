@@ -6,6 +6,7 @@ from operator import methodcaller
 from typing import Any
 
 from aiohttp.web import Application, WebSocketResponse
+from loguru import logger
 
 from ..utilities.context import SpotifyContext
 
@@ -31,10 +32,13 @@ class Server(Application):
             data (dict, optional): Data related to the action
         """
         for client in self.clients:
-            if data:
-                await client.send_json({"action": action, "data": data})
-            else:
-                await client.send_json({"action": action})
+            try:
+                if data:
+                    await client.send_json({"action": action, "data": data})
+                else:
+                    await client.send_json({"action": action})
+            except ConnectionResetError:
+                logger.warning(f"Connection reset.")
 
     def close(self):
         """Cleans up Server"""
