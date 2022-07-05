@@ -9,3 +9,4 @@ build/
 .pylintrc
 .vscode
 poetry.lock
+/dist

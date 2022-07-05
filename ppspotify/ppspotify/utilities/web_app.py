@@ -7,7 +7,7 @@ from typing import Any
 
 from aiohttp.web import Application, WebSocketResponse
 
-from .utils import SpotifyContext
+from ..utilities.context import SpotifyContext
 
 
 class Server(Application):

@@ -22,8 +22,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
 from spotipy import Spotify
 
-from .utils.server import Server
-from .utils.utils import DIRECTORY_PATH, HOST, PORT
+from .utilities.web_app import Server
+from .utilities.context import DIRECTORY_PATH, HOST, PORT
 
 
 # Create Logger
@@ -118,14 +118,13 @@ async def websocket_handler(request: web.Request) -> web.Response:
                     logger.warning("Websocket connection reset")
                 except WebSocketError as error:
                     logger.exception(error)
-                finally:
-                    app.clients.remove(websocket)
 
             case WSMsgType.ERROR:
-                logger.warning(f"ws connection closed with exception {websocket.exception()}")
-                app.clients.remove(websocket)
+                logger.warning(f"Connection closed unexpectedly {websocket.exception()}")
 
+    app.clients.remove(websocket)
     logger.warning(f"Client {request.url} connection closed")
+
     return web.Response(body="Websocket Closed")
 
 

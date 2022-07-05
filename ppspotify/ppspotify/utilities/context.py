@@ -11,7 +11,7 @@ from json import dump as json_dump, load as json_load, JSONDecodeError
 from os import environ
 from pathlib import Path
 from socket import gethostname
-from typing import Awaitable, NoReturn
+from typing import Awaitable, Callable, NoReturn
 
 from spotipy import Spotify
 from spotipy.exceptions import SpotifyException
@@ -20,8 +20,6 @@ from spotipy.cache_handler import CacheFileHandler
 from loguru import logger
 from mutagen import File as SongLookupFile
 from yarl import URL
-
-from .server import Server
 
 SPOTIFY_SCOPE = (
     "user-read-playback-state,user-library-read,user-modify-playback-state,"
@@ -44,7 +42,7 @@ LOCALHOST_URL = URL(f"http://{HOST}:{PORT}")
 SPOTIFY_LOCALHOST_URL = URL(f"http://{HOST}:{SPOTIFY_PORT}")
 
 
-async def exec_every_x_seconds(every: int, func: Awaitable) -> asyncio.Task:
+async def exec_every_x_seconds(every: int, func: Callable, *args, **kwargs) -> asyncio.Task:
     """Calls a function every x seconds
 
     Args:
@@ -54,7 +52,7 @@ async def exec_every_x_seconds(every: int, func: Awaitable) -> asyncio.Task:
 
     async def tasker():
         while True:
-            await func
+            await func(*args, **kwargs)
             await asyncio.sleep(every)
 
     return asyncio.create_task(tasker())
@@ -229,7 +227,7 @@ class SpotifyContext:
             self.credentials_manager.logout()
 
     async def create_spotify(
-        self, app: Server, client_id: str | None = None, client_secret: str | None = None
+        self, app, client_id: str | None = None, client_secret: str | None = None
     ) -> tuple[str, dict] | None:
         """Creates the Spotify Connection
 
@@ -266,8 +264,8 @@ class SpotifyContext:
         self.repeat_state = current_playback.get("repeat_state")
         self.is_playing = current_playback.get("is_playing")
 
-        await exec_every_x_seconds(1, self.check_now_playing(app))
-        await exec_every_x_seconds(1, self.check_spotify_settings(app))
+        await exec_every_x_seconds(1, self.check_now_playing, app)
+        await exec_every_x_seconds(1, self.check_spotify_settings, app)
 
         return (
             "spotify_connect",
@@ -411,7 +409,7 @@ class SpotifyContext:
         """
         if self.spotify is None:
             return
-
+        logger.info(str(data))
         self.spotify.repeat(REPEAT_STATES[data.get("state", "Disabled")])
 
     async def refresh_devices(self) -> tuple | None:
@@ -431,7 +429,7 @@ class SpotifyContext:
 
         return "playlists", {"playlists": self.get_all_playlists()}
 
-    async def check_spotify_settings(self, app: Server) -> None:
+    async def check_spotify_settings(self, app) -> None:
         """Checks for current spotify settings.
         If something changes then broadcasts the changes"""
         if (spotify := self.spotify) is None:
@@ -493,7 +491,7 @@ class SpotifyContext:
 
         return LOCAL_ARTWORK_PATH
 
-    async def check_now_playing(self, app: Server) -> None:
+    async def check_now_playing(self, app) -> None:
         """Checks for current Spotify state and updates PolyPop in case of changes"""
         if (spotify := self.spotify) is None:
             return
