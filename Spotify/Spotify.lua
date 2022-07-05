@@ -171,7 +171,7 @@ function Instance:onMessage(msg)
 	if case[action] then
 		case[action]( )
 	else
-		debug( msg )
+		log( msg )
 	end
 
 end
