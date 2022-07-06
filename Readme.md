@@ -23,6 +23,6 @@
 
 🎵 Enjoy!
 
-# 🚨HELP I'm hahing an issue❗
+# 🚨HELP I'm having an issue❗
 If you are experiencing an issue with this plugin, visit the PolyPop [Discord](https://discord.gg/QCFSQTaJW6)
 There you will find the fastest help with your issue.
