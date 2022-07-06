@@ -9,7 +9,7 @@
 
 1. Close PolyPop
 2. Goto the [latest releast](https://github.com/Jabbey92/PolyPop-Spotify-Plugin/releases/latest)
-3. Download the file ending in `.exe`
+3. Download the installer file ending in `.exe`
 4. Run the installer
 5. Open PolyPop
 
