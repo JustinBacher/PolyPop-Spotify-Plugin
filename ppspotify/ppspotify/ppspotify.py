@@ -107,8 +107,6 @@ async def websocket_handler(request: web.Request) -> web.Response:
                     logger.warning(f"Failed to load message from websocket. Contents: {payload}")
                     continue
 
-                logger.info(f"Data sent from websocket connection: {data}")
-
                 try:
                     await handle_actions(app, data)
                 except WSServerHandshakeError:
@@ -194,7 +192,7 @@ async def handle_actions(app: Server, payload: list | tuple) -> None:
             response = app.context.get_devices()
 
         case ["update", data]:
-            response = app.context.update_settings(data)
+            response = await app.context.update_settings(data)
 
         case ["quit", *_]:
             for client in app.clients:

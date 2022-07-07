@@ -1,6 +1,7 @@
 require "imagegroup"
 
 local repeat_states = { track="Song", context="Enabled", off="Disabled" }
+local current_vol = nil
 
 Instance.devices = { }
 Instance.UserImageGroup = nil
@@ -111,12 +112,13 @@ function Instance:onSpotifyConnect(data)
 
 	for k, _ in pairs(data.playlists) do
 		table.insert(playlists, k)
+		print(k .. ": " .. _)
 	end
 
 	self.properties.Controls:find("Playlist"):setElements(playlists)
 
 	if not self.devices.current_device then
-		self.devices.current_device =data.current_device
+		self.devices.current_device = data.current_device
 	end
 
 	self.properties.Controls.Modes.Shuffle = data.shuffle_state
@@ -125,6 +127,14 @@ function Instance:onSpotifyConnect(data)
 	if not self.devices.current_device then
 		return
 	end
+
+	local device_list = {}
+	
+	for k, _ in pairs(data.devices) do
+		table.insert(device_list,  k)
+	end
+
+	self.properties.Settings.Device:find("PlaybackDevice"):setElements(device_list)
 
 	for _, v in pairs(self.devices.all_devices) do
 		if self.devices.current_device == v then
@@ -218,9 +228,16 @@ function Instance:onRepeatUpdate( )
 end
 
 function Instance:onVolumeUpdate( )
-	self:send_action("update", {
-		volume=self.properties.Controls:find("Volume"):getValue( )
-	} )
+	local new_volume = math.floor(
+		self.properties.Controls:find("Volume"):getValue( ) * 100 / 15
+	) * 15
+
+	if current_vol ~= new_volume then
+		print(new_volume)
+		self:send_action("update", {volume=new_volume})
+		current_vol = new_volume
+	end
+
 end
 
 function Instance:onSongChanged(data)

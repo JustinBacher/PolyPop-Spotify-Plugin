@@ -176,7 +176,7 @@ class SpotifyContext:
         self.credentials_manager = credentials_manager
         self.spotify: Spotify | None
         self.shuffle_state: bool | None
-        self.repeat_state: bool | None
+        self.repeat_state: str | None
         self.is_playing: bool | None
         self.playlists: dict | None
         self.current_device: str | None
@@ -258,7 +258,7 @@ class SpotifyContext:
         user_profile = spotify.me()
         current_playback = spotify.current_playback() or {}
         profile_image = user_profile.get("images")
-        self.current_device = current_playback.get("device")
+        self.current_device = current_playback.get("device", {}).get("name", "")
         self.current_track = current_playback.get("item", {}).get("id")
         self.shuffle_state = current_playback.get("shuffle_state")
         self.repeat_state = current_playback.get("repeat_state")
@@ -293,20 +293,26 @@ class SpotifyContext:
         """Gets new access tokens, etc... and saves to cache file"""
         self.spotify.auth_manager.get_access_token()  # type: ignore [Spotipy didn't do type hints]
 
-    def update_settings(self, data: dict) -> None:
+    async def update_settings(self, data: dict) -> None:
         """Catch all for updating general Spotify settings.
 
         Args:
             data (dict): Should have the new settings and values to set
         """
-        if self.spotify is None:
+        if (spotify := self.spotify) is None:
             return
 
-        new_shuffle = data.get("state", False)
-        new_repeat = data.get("repeat_state", True)
+        new_shuffle = (get_val := data.get)("shuffle_state", False)
+        new_repeat = get_val("repeat_state", "Disabled")
+        new_volume = get_val("volume")
+
+        if new_volume is not None:
+            spotify.volume(new_volume)
+
         if new_shuffle:
-            self.spotify.shuffle({"state": new_shuffle})
+            spotify.shuffle({"state": new_shuffle})
             self.shuffle_state = new_shuffle
+
         if new_repeat:
             self.repeat({"state": new_repeat})
             self.repeat_state = new_repeat
@@ -318,7 +324,7 @@ class SpotifyContext:
             spotify (Spotify)
 
         Returns:
-            dict: {playlist name: playlist uri}
+            dict: {playlist_name: playlist_uri}
         """
         if self.spotify is None:
             return
@@ -409,7 +415,6 @@ class SpotifyContext:
         """
         if self.spotify is None:
             return
-        logger.info(str(data))
         self.spotify.repeat(REPEAT_STATES[data.get("state", "Disabled")])
 
     async def refresh_devices(self) -> tuple | None:
@@ -427,7 +432,7 @@ class SpotifyContext:
         if self.spotify is None:
             return
 
-        return "playlists", {"playlists": self.get_all_playlists()}
+        return "playlists", self.get_all_playlists()
 
     async def check_spotify_settings(self, app) -> None:
         """Checks for current spotify settings.
