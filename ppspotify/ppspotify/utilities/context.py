@@ -334,14 +334,12 @@ class SpotifyContext:
 
         while (
             playlists := self.spotify.current_user_playlists(offset=next(counter))
-        ) and playlists.get("next") is None:
+        ) and playlists.get("next") is not None:
             all_playlists.update(
                 {playlist["name"]: playlist["uri"] for playlist in playlists["items"]}
             )
 
-        if not playlists:
-            return {"0": "No Playlists"}
-        return playlists
+        return all_playlists or {"0": "No Playlists"}
 
     def get_devices(self) -> dict | None:
         """Get all the users currently available devices
@@ -504,7 +502,9 @@ class SpotifyContext:
         if (spotify := self.spotify) is None:
             return
 
-        track = spotify.currently_playing()
+        if (track := spotify.currently_playing()) is None:
+            return
+
         track_id = track.get("item", {}).get("id")
         is_playing = track.get("is_playing", False)
 
