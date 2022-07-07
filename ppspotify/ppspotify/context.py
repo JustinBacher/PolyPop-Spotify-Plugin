@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import sys
 import webbrowser
 
 from dataclasses import dataclass, asdict
@@ -26,8 +27,15 @@ SPOTIFY_SCOPE = (
     "user-read-currently-playing,playlist-read-private"
 )
 
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    # running in a PyInstaller bundle'
+    folder = "Spotify"
+else:
+    # running in a normal Python process
+    folder = "PolyPop-Spotify-Plugin"
+
 # Path related Constants
-DIRECTORY_PATH = Path.home().joinpath("PolyPop/UIX/PolyPop-Spotify-Plugin")
+DIRECTORY_PATH = Path.home().joinpath(f"PolyPop/UIX/{folder}")
 LOCAL_ARTWORK_PATH = DIRECTORY_PATH.joinpath("artwork.jpg")
 CREDENTIALS_PATH = DIRECTORY_PATH.joinpath(".creds")
 SPOTIFY_CACHE_DIR = DIRECTORY_PATH.joinpath(".cache")
@@ -265,7 +273,6 @@ class SpotifyContext:
         self.is_playing = current_playback.get("is_playing")
 
         await exec_every_x_seconds(1, self.check_now_playing, app)
-        await exec_every_x_seconds(1, self.check_spotify_settings, app)
 
         return (
             "spotify_connect",
@@ -310,7 +317,7 @@ class SpotifyContext:
             spotify.volume(new_volume)
 
         if new_shuffle:
-            spotify.shuffle({"state": new_shuffle})
+            spotify.shuffle(state=new_shuffle)
             self.shuffle_state = new_shuffle
 
         if new_repeat:
@@ -339,6 +346,8 @@ class SpotifyContext:
                 {playlist["name"]: playlist["uri"] for playlist in playlists["items"]}
             )
 
+        if all_playlists:
+            logger.debug(all_playlists)
         return all_playlists or {"0": "No Playlists"}
 
     def get_devices(self) -> dict | None:
@@ -367,31 +376,22 @@ class SpotifyContext:
             data (dict)
             retries (int, optional): Number of times to try downgrading Play event. Defaults to 0.
         """
+        logger.debug(data)
         if self.spotify is None:
             return
 
-        devices = self.get_devices()
-
-        if devices is None:
+        if (devices := self.get_devices()) is None:
             return
 
-        device_id = devices.get(data.get("device_name"), False) or self.current_device
-        playlist_uri = data.get("playlist_uri")
-        song_uri = data.get("track_uri")
-        logger.debug(device_id)
+        device_id = devices.get(data.get("device_name"), self.current_device)
+        playlist = data.get("playlist_uri")
 
-        if self.is_playing and playlist_uri is not None:
-            return
+        if self.is_playing:
+            if playlist is None:
+                return
 
         try:
-            if playlist_uri:
-                self.spotify.start_playback(device_id=device_id, context_uri=playlist_uri)
-
-            elif song_uri:
-                self.spotify.start_playback(device_id=device_id, uris=[song_uri])
-
-            else:
-                self.spotify.start_playback(device_id=device_id)
+            self.spotify.start_playback(device_id=device_id, context_uri=playlist)
 
         except SpotifyException as error:
             match retries:
@@ -403,7 +403,8 @@ class SpotifyContext:
                     data["device_name"] = environ["COMPUTERNAME"]
                     return await self.play(data, 2)
 
-            return "error", {"command": "play", "msg": error.msg, "reason": error.reason}
+                case _:
+                    return "error", {"command": "play", "msg": error.msg, "reason": error.reason}
 
     def repeat(self, data: dict) -> None:
         """Calls `self.spotify.repeat` with the re-munged state
@@ -508,7 +509,10 @@ class SpotifyContext:
 
             return
 
-        track_id = track.get("item", {})["id"]
+        if (track_data := track.get("item")) is None:
+            return
+
+        track_id = track_data["id"]
         is_playing = track.get("is_playing", False)
 
         if self.is_playing is None:

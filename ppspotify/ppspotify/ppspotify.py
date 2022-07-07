@@ -22,8 +22,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
 from spotipy import Spotify
 
-from .utilities.web_app import Server
-from .utilities.context import DIRECTORY_PATH, HOST, PORT
+from web_app import Server
+from context import DIRECTORY_PATH, HOST, PORT
 
 
 # Create Logger
