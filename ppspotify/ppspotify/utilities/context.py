@@ -503,6 +503,9 @@ class SpotifyContext:
             return
 
         if (track := spotify.currently_playing()) is None:
+            if self.is_playing:
+                await app.broadcast("playing_stopped")
+
             return
 
         track_id = track.get("item", {})["id"]
@@ -515,8 +518,8 @@ class SpotifyContext:
         if is_playing != self.is_playing:
             self.is_playing = is_playing
 
-            if is_playing is None:
-                await app.broadcast("playing_stopped")
+            if not is_playing:
+                return await app.broadcast("playing_stopped")
 
             if track["item"]["is_local"] and (
                 local_artwork := self.get_local_artwork(track["item"]["uri"].split(":")[-2])
