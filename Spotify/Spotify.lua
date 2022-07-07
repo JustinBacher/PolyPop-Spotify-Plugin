@@ -31,10 +31,6 @@ Instance.properties = properties({
 		{ name="Volume", type="Real", units="NormalPercent", range={
 			min=0, max=1
 		}, ui={stride=0.2}, value=1, onUpdate="onVolumeUpdate" },
-		{ name="Search", type="PropertyGroup", ui={expand=false}, items={
-			{ name="QueryString", type="Text" },
-			{ name="Queue", type="Action" }
-		} }
 	} },
 	{ name="Alerts", type="PropertyGroup", items={
 		{ name="onSongChange", type="Alert", args={
@@ -95,6 +91,7 @@ end
 
 function Instance:onSpotifyConnect(data)
 	getUI( ):setUIProperty({
+		{ obj=self.properties.Settings:find("Login"), visible=false },
 		{ obj=self.properties:find("Controls"), expand=true },
 		{ obj=self.properties:find("Alerts"), expand=true }
 	} )
