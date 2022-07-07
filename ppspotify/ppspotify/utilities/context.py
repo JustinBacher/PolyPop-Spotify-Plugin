@@ -505,7 +505,7 @@ class SpotifyContext:
         if (track := spotify.currently_playing()) is None:
             return
 
-        track_id = track.get("item", {}).get("id")
+        track_id = track.get("item", {})["id"]
         is_playing = track.get("is_playing", False)
 
         if self.is_playing is None:
