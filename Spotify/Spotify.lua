@@ -129,7 +129,7 @@ function Instance:onSpotifyConnect(data)
 	end
 
 	local device_list = {}
-	
+
 	for k, _ in pairs(data.devices) do
 		table.insert(device_list,  k)
 	end
