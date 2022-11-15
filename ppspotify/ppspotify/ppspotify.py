@@ -9,14 +9,13 @@ Todo:
 """
 
 
-from json import loads as json_loads  # Importing like this so there's one less lookup per request
+from json import (
+    loads as json_loads,
+)  # Importing like this so there's one less lookup per request
 import sys
-from turtle import back
 from typing import Callable, cast
-from urllib import request
 
-from aiohttp import WSMsgType, web
-from aiohttp import WebSocketError, WSServerHandshakeError
+from aiohttp import web, WebSocketError, WSMsgType, WSServerHandshakeError
 from aiohttp import web_exceptions
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
@@ -104,7 +103,9 @@ async def websocket_handler(request: web.Request) -> web.Response:
                     if not isinstance(data, (list, tuple)):
                         raise ValueError
                 except ValueError:
-                    logger.warning(f"Failed to load message from websocket. Contents: {payload}")
+                    logger.warning(
+                        f"Failed to load message from websocket. Contents: {payload}"
+                    )
                     continue
 
                 try:
@@ -117,7 +118,9 @@ async def websocket_handler(request: web.Request) -> web.Response:
                     logger.exception(error)
 
             case WSMsgType.ERROR:
-                logger.warning(f"Connection closed unexpectedly {websocket.exception()}")
+                logger.warning(
+                    f"Connection closed unexpectedly {websocket.exception()}"
+                )
 
     app.clients.remove(websocket)
     logger.warning(f"Client {request.url} connection closed")
@@ -131,7 +134,9 @@ async def homepage(request: web.Request) -> web.Response:
 
 
 @routes.get("/startup")
-async def startup(request: web.Request) -> web.Response:  # pylint: disable=unused-argument
+async def startup(
+    request: web.Request,
+) -> web.Response:  # pylint: disable=unused-argument
     """Renders the page for requesting the users credentials
 
     Args:
