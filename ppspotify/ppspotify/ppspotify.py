@@ -67,10 +67,14 @@ async def oauth_callback(request: web.Request) -> web.Response:
         return web.Response(body="Authorization Error")
 
     await app.broadcast(*payload)
+    me = spotify.me()
+
+    if me is None:
+        return web.Response(body="Unable to login using credentials")
 
     return web.Response(
         body=jinja_env.get_template("logged_in.html").render(
-            username=spotify.me().get("display_name", "UNKNOWN")
+            username=me.get("display_name", "UNKNOWN")
         ),
         content_type="text/html",
     )
