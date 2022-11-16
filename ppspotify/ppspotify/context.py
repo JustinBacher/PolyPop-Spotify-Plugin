@@ -49,8 +49,12 @@ HOST, PORT, SPOTIFY_PORT = "localhost", 38045, 38042
 LOCALHOST_URL = URL(f"http://{HOST}:{PORT}")
 SPOTIFY_LOCALHOST_URL = URL(f"http://{HOST}:{SPOTIFY_PORT}")
 
+logger.debug(f"{DIRECTORY_PATH=}")
 
-async def exec_every_x_seconds(every: int, func: Callable, *args, **kwargs) -> asyncio.Task:
+
+async def exec_every_x_seconds(
+    every: int, func: Callable, *args, **kwargs
+) -> asyncio.Task:
     """Calls a function every x seconds
 
     Args:
@@ -226,7 +230,8 @@ class SpotifyContext:
         if delete_old:
             CREDENTIALS_PATH.unlink(True)
 
-        logger.debug(f"Opening: {LOCALHOST_URL.with_path('/startup')}")
+        startup_url = LOCALHOST_URL.with_path("/startup")
+        logger.debug(f"Opening: {startup_url}")
         webbrowser.open(LOCALHOST_URL.with_path("/startup").human_repr())
 
     def logout(self) -> None:
@@ -256,7 +261,9 @@ class SpotifyContext:
             )
 
         if (
-            spotify := Spotify(client_credentials_manager=self.credentials_manager.auth_manager)
+            spotify := Spotify(
+                client_credentials_manager=self.credentials_manager.auth_manager
+            )
         ) is None:
             raise RuntimeError("Incorrect credentials")
 
@@ -278,7 +285,9 @@ class SpotifyContext:
             "spotify_connect",
             {
                 "name": user_profile.get("display_name"),
-                "user_image_url": "" if not profile_image else profile_image[0].get("url"),
+                "user_image_url": ""
+                if not profile_image
+                else profile_image[0].get("url"),
                 "devices": self.get_devices(),
                 "current_device": self.current_device,
                 "is_playing": self.is_playing,
@@ -362,7 +371,10 @@ class SpotifyContext:
         return (
             None
             if self.spotify is None
-            else {device["name"]: device["id"] for device in self.spotify.devices().get("devices")}
+            else {
+                device["name"]: device["id"]
+                for device in self.spotify.devices().get("devices")
+            }
         )
 
     async def play(self, data: dict, retries: int = 0) -> tuple | None:
@@ -404,7 +416,11 @@ class SpotifyContext:
                     return await self.play(data, 2)
 
                 case _:
-                    return "error", {"command": "play", "msg": error.msg, "reason": error.reason}
+                    return "error", {
+                        "command": "play",
+                        "msg": error.msg,
+                        "reason": error.reason,
+                    }
 
     def repeat(self, data: dict) -> None:
         """Calls `self.spotify.repeat` with the re-munged state
@@ -423,7 +439,11 @@ class SpotifyContext:
 
         return (
             "devices",
-            {"devices": [] if (devices := self.get_devices()) is None else list(devices)},
+            {
+                "devices": []
+                if (devices := self.get_devices()) is None
+                else list(devices)
+            },
         )
 
     async def refresh_playlists(self) -> tuple | None:
@@ -526,7 +546,9 @@ class SpotifyContext:
                 return await app.broadcast("playing_stopped")
 
             if track["item"]["is_local"] and (
-                local_artwork := self.get_local_artwork(track["item"]["uri"].split(":")[-2])
+                local_artwork := self.get_local_artwork(
+                    track["item"]["uri"].split(":")[-2]
+                )
             ):
                 track["item"]["album"]["images"] = [{"url": f"file/{local_artwork}"}]
             await app.broadcast("started_playing", track)
@@ -535,7 +557,9 @@ class SpotifyContext:
             return
 
         if track["item"]["is_local"]:
-            if local_artwork := self.get_local_artwork(track["item"]["uri"].split(":")[-2]):
+            if local_artwork := self.get_local_artwork(
+                track["item"]["uri"].split(":")[-2]
+            ):
                 track["item"]["album"]["images"] = [
                     {"url": local_artwork.as_uri().replace("/", "\\")}
                 ]
