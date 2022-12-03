@@ -2,7 +2,6 @@
 
 import asyncio
 
-from operator import methodcaller
 from typing import Any
 
 from aiohttp.web import Application, WebSocketResponse
