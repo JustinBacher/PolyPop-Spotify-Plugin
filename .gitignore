@@ -6,8 +6,6 @@ build/
 .*
 *.spec
 *.log
-.pylintrc
-.vscode
 poetry.lock
 /dist
 *.exe
