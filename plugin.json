@@ -1,0 +1,9 @@
+{
+    "name": "Spotify",
+    "author": "JabSmack",
+    "description": "Allow Polypop to interact with Spotify in realtime",
+    "category": "Sources",
+    "url": "https://github.com/Jabbey92/PolyPop-Spotify-Plugin",
+    "version": "1.0.2",
+    "min_app_version": "1.0"
+}
