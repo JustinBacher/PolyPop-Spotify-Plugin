@@ -8,7 +8,7 @@ from typing import Any
 from aiohttp.web import Application, WebSocketResponse
 from loguru import logger
 
-from context import SpotifyContext
+from .context import SpotifyContext
 
 
 class Server(Application):

@@ -12,14 +12,14 @@ from json import dump as json_dump, load as json_load, JSONDecodeError
 from os import environ
 from pathlib import Path
 from socket import gethostname
-from typing import Awaitable, Callable, NoReturn
+from typing import Callable, NoReturn
 
 from spotipy import Spotify
 from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyOAuth
 from spotipy.cache_handler import CacheFileHandler
 from loguru import logger
-from mutagen import File as SongLookupFile
+from mutagen._file import File as SongLookupFile
 from yarl import URL
 
 SPOTIFY_SCOPE = (
@@ -271,6 +271,8 @@ class SpotifyContext:
         self.credentials_manager.save_to_file()
 
         user_profile = spotify.me()
+        if user_profile is None:
+            raise RuntimeError("Profile not found")
         current_playback = spotify.current_playback() or {}
         profile_image = user_profile.get("images")
         self.current_device = current_playback.get("device", {}).get("name", "")
@@ -368,14 +370,10 @@ class SpotifyContext:
         Returns:
             dict: In the form of: {device name: device id, ...}
         """
-        return (
-            None
-            if self.spotify is None
-            else {
-                device["name"]: device["id"]
-                for device in self.spotify.devices().get("devices")
-            }
-        )
+        if (spotify := self.spotify) is None or (devices := spotify.devices()) is None:
+            return None
+
+        return {device["name"]: device["id"] for device in devices.get("devices")}
 
     async def play(self, data: dict, retries: int = 0) -> tuple | None:
         """Starts Playing a song or Playlist. If failure then it retries
@@ -502,13 +500,13 @@ class SpotifyContext:
 
         logger.debug(f"{file_names[0]=}")
         song_file = SongLookupFile(file_names[0])
-        logger.debug(f"{song_file.tags=}")
+        logger.debug(f"{song_file.tags=}")  # type: ignore
 
         for apic_name in COVER_IMAGE_APIC_NAMES:
-            if apic_name not in song_file.tags:
+            if apic_name not in song_file.tags:  # type: ignore
                 continue
             logger.debug(f"{LOCAL_ARTWORK_PATH}")
-            artwork = song_file.tags[name].data
+            artwork = song_file.tags[name].data  # type: ignore
 
         if artwork is None:
             return
