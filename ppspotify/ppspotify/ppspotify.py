@@ -5,6 +5,7 @@ control spotify from within PolyPop itself
 
 Todo:
     Get it working again
+    
 
 """
 
@@ -16,7 +17,7 @@ import sys
 from typing import Callable, cast
 
 from aiohttp import web, WebSocketError, WSMsgType, WSServerHandshakeError
-from aiohttp import web_exceptions
+from aiohttp.web_exceptions import HTTPNotFound
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
 from spotipy import Spotify
@@ -232,7 +233,7 @@ async def error_middleware(request: web.Request, handler: Callable) -> web.Respo
 
     except web.HTTPException as error:
         match error.status:
-            case web_exceptions.HTTPNotFound:
+            case HTTPNotFound:
                 return web.Response(text="Custom 404 message", status=404)
 
             case _status:
