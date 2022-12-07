@@ -16,8 +16,13 @@ from json import (
 import sys
 from typing import Callable, cast
 
-from aiohttp import web, WebSocketError, WSMsgType, WSServerHandshakeError
-from aiohttp.web_exceptions import HTTPNotFound
+from aiohttp import (
+    web,
+    web_exceptions,
+    WebSocketError,
+    WSMsgType,
+    WSServerHandshakeError,
+)
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from loguru import logger
 from spotipy import Spotify
@@ -91,13 +96,13 @@ async def websocket_handler(request: web.Request) -> web.Response:
     """
     websocket = web.WebSocketResponse()
     await websocket.prepare(request)
+
     app = cast(Server, request.app)
     app.clients.add(websocket)
+
     logger.info(f"Websocket connection established.")
 
-    payload = await app.context.create_spotify(app)
-
-    if payload is not None:
+    if (payload := await app.context.create_spotify(app)) is not None:
         await app.broadcast(*payload)
 
     async for payload in websocket:
@@ -233,7 +238,7 @@ async def error_middleware(request: web.Request, handler: Callable) -> web.Respo
 
     except web.HTTPException as error:
         match error.status:
-            case HTTPNotFound:
+            case web_exceptions.HTTPNotFound:
                 return web.Response(text="Custom 404 message", status=404)
 
             case _status:
