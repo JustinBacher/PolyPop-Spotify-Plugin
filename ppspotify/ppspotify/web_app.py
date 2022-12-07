@@ -1,7 +1,6 @@
 """Custom wrapper for `aiohttp.web.Application"""
 
 import asyncio
-
 from typing import Any
 
 from aiohttp.web import Application, WebSocketResponse
