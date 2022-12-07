@@ -62,10 +62,14 @@ async def oauth_callback(request: web.Request) -> web.Response:
         # If somehow the user didn't supply the Client ID and Secret then error out
         return web.Response(body="Missing Credentials")
 
+    logger.debug("Setting up Spotify connection")
+
     app = cast(Server, request.app)
     payload = await app.context.create_spotify(
         app, client_id=query["client-id"], client_secret=query["client-secret"]
     )
+
+    logger.debug("Spotify connection setup")
 
     spotify = cast(Spotify, app.context.spotify)
 
@@ -102,6 +106,7 @@ async def websocket_handler(request: web.Request) -> web.Response:
 
     logger.info(f"Websocket connection established.")
 
+    logger.debug("Creating Spotify connection")
     if (payload := await app.context.create_spotify(app)) is not None:
         await app.broadcast(*payload)
 
@@ -266,8 +271,9 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     try:
         web.run_app(app, host=HOST, port=PORT)
 
-    except SystemExit:
+    except (SystemExit, KeyboardInterrupt):
         logger.info("Server Shutdown Gracefully")
+        sys.exit(1)
 
     except Exception as error:  # pylint: disable=broad-except
         logger.exception(error)
