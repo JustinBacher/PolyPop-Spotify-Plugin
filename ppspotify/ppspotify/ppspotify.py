@@ -119,7 +119,7 @@ async def websocket_handler(request: web.Request) -> web.Response:
                         raise ValueError
                 except ValueError:
                     logger.warning(
-                        f"Failed to load message from websocket. Contents: {payload}"
+                        f"Failed to load message from websocket. Contents:\n{payload}"
                     )
                     continue
 
