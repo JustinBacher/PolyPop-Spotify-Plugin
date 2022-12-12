@@ -73,7 +73,7 @@ end
 
 function Instance:onInit()
 	self.UserImageGroup = createImageGroup(self:getObjectKit(), "UserImageGroup")
-	print(getLocalFolder() .. "ppspotify .exe")
+	
 	getOS():run("Spotify Service", getLocalFolder() .. "ppspotify .exe")
 
 	getUI():setUIProperty({
