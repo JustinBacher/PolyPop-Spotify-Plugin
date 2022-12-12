@@ -457,7 +457,7 @@ class SpotifyContext:
         """Sends current available playlists to client"""
         if self.spotify is None:
             return
-
+        logger.debug(self.get_all_playlists())
         return "playlists", self.get_all_playlists()
 
     async def check_spotify_settings(self, app) -> None:

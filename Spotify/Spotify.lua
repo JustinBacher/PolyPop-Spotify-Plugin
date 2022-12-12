@@ -159,7 +159,7 @@ function Instance:onSpotifyConnect(data)
 	self:onRefreshPlaylists(data)
 
 	if not self.devices.current_device then
-		self.devices.current_device =data.current_device
+		self.devices.current_device = data.current_device
 	end
 
 	self.properties.Settings.Modes.Shuffle = data.shuffle_state
@@ -269,10 +269,15 @@ function Instance:onVolumeUpdate()
 end
 
 function Instance:onRefreshPlaylists(data)
+	if data.playlists == nil then
+		print("No Playlists found")
+		return
+	end
+	
 	self.playlists = data.playlists
 	local playlists = {}
 
-	for name, _ in pairs(data.playlists) do
+	for name in pairs(data.playlists) do
 		table.insert(playlists, name)
 	end
 
