@@ -275,8 +275,11 @@ class SpotifyContext:
             raise RuntimeError("Profile not found")
         current_playback = spotify.current_playback() or {}
         profile_image = user_profile.get("images")
+        current_track = current_playback.get("item", {})
         self.current_device = current_playback.get("device", {}).get("name", "")
-        self.current_track = current_playback.get("item", {}).get("id")
+        self.current_track = (
+            None if current_track is not None else current_track.get("id")
+        )
         self.shuffle_state = current_playback.get("shuffle_state")
         self.repeat_state = current_playback.get("repeat_state")
         self.is_playing = current_playback.get("is_playing")
@@ -401,7 +404,10 @@ class SpotifyContext:
                 return
 
         try:
-            self.spotify.start_playback(device_id=device_id, context_uri=playlist)
+            if playlist is None:
+                self.spotify.start_playback(device_id=device_id)
+            else:
+                self.spotify.start_playback(device_id=device_id, context_uri=playlist)
 
         except SpotifyException as error:
             match retries:
@@ -412,7 +418,9 @@ class SpotifyContext:
                 case 1:
                     data["device_name"] = environ["COMPUTERNAME"]
                     return await self.play(data, 2)
-
+                case 2:
+                    self.spotify.start_playback()
+                    return
                 case _:
                     return "error", {
                         "command": "play",
