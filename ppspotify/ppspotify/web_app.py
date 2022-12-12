@@ -43,4 +43,4 @@ class Server(Application):
         for task in self.tasks:
             task.cancel()
 
-        self.context.close()
+        self.context.close()  # Type: Ignore
