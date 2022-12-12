@@ -273,16 +273,17 @@ class SpotifyContext:
         user_profile = spotify.me()
         if user_profile is None:
             raise RuntimeError("Profile not found")
+
         current_playback = spotify.current_playback() or {}
         profile_image = user_profile.get("images")
         current_track = current_playback.get("item", {})
         self.current_device = current_playback.get("device", {}).get("name", "")
-        self.current_track = (
-            None if current_track is not None else current_track.get("id")
-        )
         self.shuffle_state = current_playback.get("shuffle_state")
         self.repeat_state = current_playback.get("repeat_state")
         self.is_playing = current_playback.get("is_playing")
+        self.current_track = (
+            None if current_track is not None else current_track.get("id")
+        )
 
         await exec_every_x_seconds(1, self.check_now_playing, app)
 
@@ -351,7 +352,7 @@ class SpotifyContext:
             return
 
         all_playlists = {}
-        counter = count(step=50)
+        counter = count(0, 50)
 
         while (
             playlists := self.spotify.current_user_playlists(offset=next(counter))
